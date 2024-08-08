@@ -137,7 +137,7 @@ Contributions are welcome! Please follow these guidelines:
 4. Submit a pull request with a clear description of the changes.
 5. Wait for review and feedback.
 
-For more detailed contributing guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For more detailed contributing guidelines, see [CONTRIBUTING.md](https://github.com/MaheshShukla1/IAM-Automation-GUI).
 
 ## License
 
