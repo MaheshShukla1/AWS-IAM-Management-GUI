@@ -1,7 +1,6 @@
 import tkinter as tk
 from gui import IAMManagerApp
 
-
 def main():
     root = tk.Tk()
     app = IAMManagerApp(root)
