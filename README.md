@@ -129,15 +129,25 @@ A: Verify that your AWS credentials are correctly configured using the `aws conf
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
+We appreciate your interest in contributing to IAM Automation GUI! To ensure a smooth contribution process, please adhere to the following guidelines:
+	
+1. **Fork the Repository**: Create your own copy of the repository on GitHub.
+2. **Create a Branch**: Develop your feature or fix in a new branch. Use a descriptive name, e.g., `feature/add-logging` or `bugfix/issue-123`.
+	    
+	  ```bash
+	    git checkout -b your-branch-name
+	  ```
+3. **Make Your Changes**: Implement your changes and ensure all new and existing tests pass. Follow our coding standards and add any necessary documentation.
+4. **Commit and Push**: Commit your changes with a clear and concise message explaining the purpose of the changes. Push your branch to your forked repository.
+	    
+     ```bash
+	    git commit -m "Your detailed commit message" git push origin your-branch-name
+	 ```
+5. **Submit a Pull Request**: Open a pull request against the `main` branch of the original repository. Include a detailed description of your changes, and reference any related issues.
+6. **Review and Feedback**: Be open to feedback and make any necessary revisions based on the review. Engage in the discussion to refine your contribution.
+	
+For comprehensive contributing instructions, please refer to our [CONTRIBUTING.md](https://github.com/MaheshShukla1/CONTRIBUTING.md). If you have any questions, feel free to contact Mahesh Shukla at MaheshCloudSec1@gmail.com.
 
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/YourFeature`).
-3. Make your changes and ensure your code passes all tests.
-4. Submit a pull request with a clear description of the changes.
-5. Wait for review and feedback.
-
-For more detailed contributing guidelines, see [CONTRIBUTING.md](https://github.com/MaheshShukla1/CONTRIBUTING.md).
 
 ## License
 
