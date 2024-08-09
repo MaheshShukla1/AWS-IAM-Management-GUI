@@ -1,0 +1,224 @@
+"""
+threading: Used for running multiple operations concurrently in separate threads, which is useful for tasks that should not block the main application, like network requests.
+
+ThreadPoolExecutor: A high-level interface for asynchronously executing callables using a pool of threads, allowing multiple tasks to be executed concurrently.
+
+tkinter: The standard Python interface to the Tk GUI toolkit, used here to create the graphical user interface (GUI) for the application.
+
+boto3: The Amazon Web Services (AWS) SDK for Python, used to interact with AWS services. Here, it's specifically used to interact with the IAM (Identity and Access Management) service.
+
+logging: A standard Python module for tracking events that happen when some software runs. It’s used for debugging, troubleshooting, or auditing purposes.
+
+LogHandler: A custom logging handler defined in an external module (logging_config). This handler is likely configured to output logs to the GUI's text widget.
+
+validate_json, json: Presumably, these are utility functions from a custom validators module, where validate_json might validate JSON structure and json could refer to standard JSON processing.
+
+ClientError: An exception from botocore, the low-level interface of AWS SDK, used to handle errors returned by AWS services.
+"""
+import threading
+from concurrent.futures import ThreadPoolExecutor
+import tkinter as tk
+from tkinter import scrolledtext,ttk,messagebox,simpledialog
+import boto3
+import logging
+from log_handler import LogHandler
+from validate_json import validate_json
+from botocore.exceptions import ClientError
+
+
+class IAMManagerApp:
+    """
+    self.root: This is the main window or root widget of the Tkinter application.
+
+    self.root.title(): Sets the title of the application window to "IAM Manager".
+
+    self.root.geometry(): Defines the dimensions of the window (900x600 pixels).
+
+    self.root.configure(): Sets the background color of the window.
+
+    self.iam = boto3.client('iam'): Creates a client for AWS IAM service, allowing you to interact with IAM (e.g., creating users, roles, policies).
+
+    self.dialog_active: A flag that could be used to track whether a dialog is currently active, likely to prevent multiple dialogs from being opened simultaneously.
+
+    self.setup_gui(): Calls the method to set up all the graphical components (buttons, labels, etc.) of the GUI.
+
+    self.log_viewer: A text widget where logs will be displayed. It is a scrolled text area, meaning it can display large amounts of text with a scrollbar.
+
+    self.setup_logging(): Configures the logging to direct log messages to the log_viewer widget.
+    """
+    def __init__(self,root):
+        self.root = root
+        self.root.title("IAM Manager")
+        self.root.geometry("900x600")
+        self.root.configure(bg="#f0f0f0")
+
+        # Initialize IAM Client
+        self.iam = boto3.client('iam')
+
+        # Initialize Dialog State
+        self.dialog_active = False
+
+        # Setup Gui Components
+        self.setup_gui()
+
+        # Setup logging viewer
+        self.log_viewer = scrolledtext.ScrolledText(self.root,height=10,width=100,state='disabled',bg='#ffffff',fg='#000000',font=("Arial",10))
+        self.log_viewer.grid(row=9,column=0,columnspan=4,padx=10,pady=10)
+
+        self.setup_logging()
+    
+    """
+    Purpose: This method sets up logging so that all log messages can be displayed in the log_viewer text widget.
+
+    Explanation: logging.getLogger().handlers: Retrieves all handlers currently attached to the root logger.
+    isinstance(handler, LogHandler): Checks if a LogHandler is already attached. This prevents adding multiple handlers.
+    logging.getLogger().addHandler(LogHandler(self)): Adds the custom LogHandler that sends log messages to the log_viewer.
+    """
+    def setup_logging(self):
+        if not any(isinstance(handler,LogHandler) for handler in logging.getLogger().handlers):
+            logging.getLogger().addHandler(LogHandler(self))
+    
+    """
+    Purpose: This method is responsible for creating and placing all the widgets (buttons, labels, etc.) on the window.
+
+    Explanation:
+
+    title_label: A label widget displaying the title "IAM Manager" with a specific font style. It spans across four columns at the top of the grid layout.
+    grid(): This is a geometry manager that organizes widgets in a table-like structure within the parent widget.
+    """
+    def setup_gui(self):
+        title_label = tk.Label(self.root,text="IAM Manager",font=("Arial",20,"bold"),bg="#f0f0f0")
+        title_label.grid(row=0,column=0,columnspan=4,pady=15)
+
+        """
+        ttk.Style(): Used to customize the appearance of ttk widgets, in this case, buttons (TButton).
+        button_style.configure(): Configures the button appearance with padding, background color, and font styling.
+
+        button_style.map(): Defines the appearance of the button when it is active (clicked).
+        """
+        
+        button_style = ttk.Style()
+        button_style.configure("TButton",padding=6,relief='flat',background="#007bff",foreground="#000000",font=("Arial",10,"bold"))
+        button_style.map("TButton",background=[("active","#0056b3")])
+
+        """
+        ttk.Button(): Creates a button widget with a specific text label and an associated command to be executed when the button is clicked.
+
+        command=self.create_user: Binds the button to a method that will be called when the button is clicked (e.g., self.create_user).
+
+        grid(): Places the button on the window at the specified grid position.
+        """
+
+        ttk.Button(self.root,text="Create User",command=self.create_user).grid(row=1,column=0,padx=10,pady=10)
+        ttk.Button(self.root, text="List Users", command=self.list_users).grid(row=1, column=1, padx=10, pady=10)
+        ttk.Button(self.root, text="Delete User", command=self.delete_user).grid(row=1, column=2, padx=10, pady=10)
+        ttk.Button(self.root, text="Create Role", command=self.create_role).grid(row=1, column=3, padx=10, pady=10)
+        ttk.Button(self.root, text="Delete Role", command=self.delete_role).grid(row=2, column=0, padx=10, pady=10)
+        ttk.Button(self.root, text="List Roles", command=self.list_roles).grid(row=2, column=1, padx=10, pady=10)
+        ttk.Button(self.root, text="Attach Policy to Role", command=self.attach_role_policy).grid(row=2, column=2, padx=10, pady=10)
+        ttk.Button(self.root, text="Detach Policy from Role", command=self.detach_role_policy).grid(row=2, column=3, padx=10, pady=10)
+        ttk.Button(self.root, text="Create Policy", command=self.create_policy).grid(row=3, column=0, padx=10, pady=10)
+        ttk.Button(self.root, text="List Policies", command=self.list_policies).grid(row=3, column=1, padx=10, pady=10)
+        ttk.Button(self.root, text="Delete Policy", command=self.delete_policy).grid(row=3, column=2, padx=10, pady=10)
+        ttk.Button(self.root, text="Create Group", command=self.create_group).grid(row=4, column=0, padx=10, pady=10)
+        ttk.Button(self.root, text="Delete Group", command=self.delete_group).grid(row=4, column=1, padx=10, pady=10)
+        ttk.Button(self.root, text="Clear Logs", command=self.clear_logs).grid(row=4, column=2, padx=10, pady=10)
+        ttk.Button(self.root, text="Exit", command=self.root.quit).grid(row=4, column=3, padx=10, pady=10)
+
+        # Add search functionality
+        tk.Label(self.root, text="Search User:", bg="#f0f0f0").grid(row=5, column=0, padx=10, pady=10, sticky="e")
+        self.search_user_entry = tk.Entry(self.root)
+        self.search_user_entry.grid(row=5, column=1, padx=10, pady=10)
+        ttk.Button(self.root, text="Search", command=self.search_user).grid(row=5, column=2, padx=10, pady=10)
+
+        tk.Label(self.root, text="Search Role:", bg="#f0f0f0").grid(row=6, column=0, padx=10, pady=10, sticky="e")
+        self.search_role_entry = tk.Entry(self.root)
+        self.search_role_entry.grid(row=6, column=1, padx=10, pady=10)
+        ttk.Button(self.root, text="Search", command=self.search_role).grid(row=6, column=2, padx=10, pady=10)
+
+        tk.Label(self.root, text="Search Policy (by Name):", bg="#f0f0f0").grid(row=7, column=0, padx=10, pady=10, sticky="e")
+        self.search_policy_entry = tk.Entry(self.root)
+        self.search_policy_entry.grid(row=7, column=1, padx=10, pady=10)
+        ttk.Button(self.root, text="Search", command=self.search_policy).grid(row=7, column=2, padx=10, pady=10)
+    """
+    Explanation: self.log_viewer.configure(state='normal'): Temporarily enables editing of the text widget (it is usually disabled to prevent user editing).
+    self.log_viewer.delete(1.0, tk.END): Deletes all text from the beginning (1.0) to the end (tk.END) of the text widget.
+    self.log_viewer.configure(state='disabled'): Re-disables the text widget to prevent further editing.
+    """
+    def clear_logs(self):
+        self.log_viewer.configure(state='normal')
+        self.log_viewer.delete(1.0,tk.END)
+        self.log_viewer.configure(state='disabled')
+
+    """
+    search_user(self) Method
+    Purpose:
+    This method is responsible for searching a specific IAM user in AWS using the provided username in the GUI. The search result, whether successful or not, is displayed in the log viewer.
+
+    Steps:
+    Get User Input: The method starts by retrieving the text from the search_user_entry widget, which is expected to be the username.
+    The input is stripped of any leading or trailing whitespace.
+    
+    Input Validation: If the user doesn't enter a username, a message box (messagebox.showerror) pops up with an "Input Error," asking the user to input a username.
+    The method returns early if no username is provided, preventing further execution.
+
+    Logging: An info log is created to note the start of the user search.
+    
+    Search in a Separate Thread: A search_user_thread function is defined to handle the user search. This allows the search operation to run in the background, keeping the GUI responsive.
+    
+    Inside this function, the iam.get_user method from the boto3 client is used to fetch the user details.
+    If the user is found, their name and ARN (Amazon Resource Name) are retrieved, and a success message is formatted.
+    If there's an error (e.g., user not found or AWS permissions issue), a ClientError is caught, and an error message is prepared.
+
+    The result message is then passed to the log viewer using self.root.after(0, lambda: self.update_log_viewer(message)). The after method ensures thread-safe updates to the Tkinter GUI.
+    
+    Thread Execution: A Thread object is created and started with the target as search_user_thread. This is marked as a daemon thread, meaning it will automatically exit when the main program exits.
+    """    
+
+   
+    def search_user(self):
+        user_name = self.search_user_entry.get().strip() # Correct assign the username
+        if not user_name:
+            messagebox.showerror("Input Error","Please enter a user name.")
+            return
+    
+        logging.info(f'Starting search for user: {user_name}')
+
+        def search_user_thread():
+            try:
+                response = self.iam.get_user(UserName=user_name)
+                user_info = response['User']
+                name = user_info['UserName']
+                arn = user_info['Arn']
+                message = f'User found:\nName: {name}\nArn: {arn}'
+                self.root.after(0,lambda: self.log(message))
+            except ClientError as e:
+                error_message = f"Error finding user: {e}"
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
+        
+        # Ensure thread is started only once
+        search_thread = threading.Thread(target=search_user_thread,daemon=True)
+        search_thread.start()
+
+
+    def search_role(self):
+        role_name = self.search_role_entry.get().strip()
+        if not role_name:
+            messagebox.showerror(f"Input Error","Please enter role name.")
+            return
+        logging.info(f'Starting search for role: {role_name}')
+    
+
+
+        
+        
+
+
+
+
+
+
+
+
+
+
