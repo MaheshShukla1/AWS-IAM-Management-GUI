@@ -9,6 +9,7 @@
 ## Table of Contents
 
 - [Project Overview](#project-overview)
+- [Application Screenshot](#application-screenshot)
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -39,35 +40,56 @@ IAM Manager GUI simplifies AWS IAM management through a desktop application, off
 
 ## Features
 
-- **User-Friendly GUI**: Easy-to-navigate interface for IAM operations.
-- **Real-Time Logging**: Monitor all actions with detailed logs.
-- **Error Handling**: Informative error messages and validation to ensure smooth operation.
-- **Cross-Platform**: Compatible with all platforms supporting Python and Tkinter.
+- **User-Friendly GUI**: Provides an intuitive and easy-to-navigate interface for efficient IAM management, designed for both beginners and advanced users.
+- **Real-Time Logging**: Captures detailed logs of all actions and events, enabling comprehensive monitoring and troubleshooting.
+- **Robust Error Handling**: Features informative error messages and validation checks to guide users and ensure smooth operation.
+- **Cross-Platform Compatibility**: Works seamlessly across all platforms that support Python and Tkinter, including Windows, macOS, and Linux.
+- **Asynchronous Operations**: Utilizes threading to handle long-running IAM tasks in the background, preventing GUI freeze and ensuring a responsive user experience.
+- **Customizable Settings**: Allows users to configure AWS credentials and other settings directly through the application for streamlined management.
+- **Secure Authentication**: Handles AWS credentials securely, following best practices to ensure the safety of sensitive information.
+- **Comprehensive IAM Management**: Supports essential IAM operations, including user creation, deletion, and management of access keys, policies, and MFA devices.
+- **User Confirmation Dialogs**: Implements confirmation dialogs for critical actions like user deletion to prevent accidental operations.
+- **Detailed Documentation**: Includes a well-structured README and contributing guidelines to facilitate ease of use and collaboration.
+  
 
 ## Installation
 
 ### Prerequisites
 
-Ensure Python 3.x is installed. Install the `boto3` library, and `tkinter` comes pre-installed with Python.
+- **Python 3.x**: Ensure that Python 3.x is installed on your system. Tkinter is included with Python installations by default.
+- **AWS Credentials**: Configure your AWS credentials using the AWS CLI or by setting up environment variables.
 
 ### Installing Dependencies
 
-1. Clone the repository:
-   ```git
-    git clone https://github.com/MaheshShukla1/IAM-Manager-GUI
-   ```
+1. **Clone the Repository**: To get started, clone the repository to your local machine using Git:
+    ![git_clone](https://github.com/user-attachments/assets/6672bebb-6052-4dfe-8bcf-2d8c0ad6b67e)
+
+    ```bash 
+    git clone https://github.com/MaheshShukla1/IAM-Manager-GUI.git
+    ```
     
-2. Install the required Python packages:
+2. **Navigate to the Project Directory**: Change into the project directory:
+    # ![cd](https://github.com/user-attachments/assets/764f0bb4-0f65-46ba-98bb-cf391fa2cd1c)
+
+    ```bash  
+    cd IAM-Manager-GUI
+    ```
     
-    ```python
+3. **Install Python Dependencies**: Install the required Python packages using pip:
+    
+    ```bash    
     pip install boto3
     ```
+    
+    The `boto3` library is used for interacting with AWS IAM. Tkinter is included with Python and does not require separate installation.
+    
+4. **Verify Installation**: Ensure that the dependencies are correctly installed and that Python is set up properly by running a test script or starting the application.
     
 
 ## Usage
 
 1. **Configure AWS Credentials**: Set up your AWS credentials with:
-##### **![aws_configure](https://github.com/user-attachments/assets/a1646b82-8d49-40b9-9ca7-2f2ec96695c7)**
+   # ![aws_configure](https://github.com/user-attachments/assets/a1646b82-8d49-40b9-9ca7-2f2ec96695c7)
 
     ```bash
     aws configure
