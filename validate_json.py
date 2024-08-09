@@ -7,6 +7,10 @@ The code provided defines a function called validate_json that takes a string as
 
 def validate_json(json_string):
     try:
+        """
+        json.loads(): Parses a JSON string and converts it into a Python dictionary or list.
+        json.dumps(): Converts a Python object (like a dictionary) into a JSON string.
+        """
         json.loads(json_string)
         return True
     except json.JSONDecodeError:
