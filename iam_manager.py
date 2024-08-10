@@ -883,7 +883,51 @@ class IAMManagerApp:
         
         # start the policy creation process in a seperate thread
         threading.Thread(target=process_creation,daemon=True).start()
-
-
     
+    def list_policies(self):
+        """
+        List all IAM policies and displays their names and ARNs in the log viewer.
+        
+        This methods fetches all IAM policies available within the AWS account and displays their names and ARNs. It runs in a seperate thread to ensure the GUi remains responsive.
+        """
+
+        def list_policies_thread():
+            try:
+                policies_info = []
+                response = self.iam.list_policies(Scope='All')
+
+                policies = response.get('Policies',[])
+                if not policies:
+                    message = 'No policies found.'
+                    logging.info(message)
+                    self.root.after(0,lambda: self.log_viewer(message))
+                    return
+                
+                # Collect policy names and ARNs 
+                for policy in policies:
+                    policy_name = policy['PolicyName']
+                    policy_arn = policy['PolicyArn']
+                    policies_info.append(f'{policy_name} - {policy_arn}')
+
+                # Combine all policy into a single string
+                policies_text = '\n'.join(policies_info)
+                logging.info('Policy listed successfully.')
+
+                # Update the GUI on main thread
+                self.root.after(0,lambda: self.log_viewer(policies_text))
+            
+            except ClientError as e:
+                error_message = f'ClientError listing policies: {e}'
+                logging.error(error_message)
+                self.root.after(0,lambda: self.log_viewer(error_message))
+            except Exception as e:
+                error_message = f'Unexpected error occurred: {e}'
+                logging.error(error_message)
+                self.root.after(0,lambda: self.log_viewer(error_message))
+        
+        # Start the policy listing process in a new thread.
+        threading.Thread(target=list_policies_thread,daemon=True).start()
+
+
+
 
