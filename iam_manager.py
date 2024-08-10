@@ -55,6 +55,7 @@ class IAMManagerApp:
         # Initialize IAM Client
         self.iam = boto3.client('iam')
         self.sts = boto3.client('sts')
+        self.validate_json = validate_json
 
         # Initialize Dialog State
         self.dialog_active = False
@@ -836,4 +837,53 @@ class IAMManagerApp:
         # Start the process in a new thread
         threading.Thread(target=process_attachment,daemon=True).start()
 
+    def create_policy(self):
+        """
+        Creates an IAM policy with the specified name and policy document JSON.
+        Prompts the user to enter a policy name and the JSON Document for the policy.
+        Validates the input and creates the policy in a seperate thread, ensuring the GUI remains responsive. Logs all action and updates the log viewer with the result.
+        """
+        # Prompt for policy and document
+        policy_name = simpledialog.askstring("Create a policy","Enter policy name:")
+        policy_document = simpledialog.askstring("Create policy","Enter policy document JSON:")
+
+        if not policy_name or not policy_document:
+            message = 'Policy name and policy document must be provided.'
+            logging.error(message)
+            self.root.after(0,lambda: messagebox.showerror("Error"),message)
+            return
+        
+        if not self.validate_json(policy_document):
+            message = 'Invalid JSON format for policy document.'
+            logging.error(message)
+            self.root.after(0,lambda: messagebox.showerror("Error",message))
+            return
+        
+        # Function to handle policy creation and updating the log viewer 
+        def process_creation():
+            try:
+                response = self.iam.create_policy(
+                    PolicyName=policy_name,
+                    PolicyDocument=policy_document
+                )
+                message = f'Policy {policy_name} created successfully. ARN: {response["Policy"]["Arn"]}'
+                logging.info(message)
+            except self.iam.exceptions.EntityAlreadyExistsException:
+                message = f'Policy {policy_name} already exists.'
+                logging.error(message)
+            except ClientError as e:
+                message = f'ClientError creating policy {policy_name}: {e}'
+                logging.error(message)
+            except Exception as e:
+                message = f'Unexpected error creating policy {policy_name}: {e}'
+                logging.error(message)
+            
+            # Update the GUI on the main thread
+            self.root.after(0,lambda: self.log_viewer(message))
+        
+        # start the policy creation process in a seperate thread
+        threading.Thread(target=process_creation,daemon=True).start()
+
+
+    
 
