@@ -723,5 +723,76 @@ class IAMManagerApp:
         
         # Start the thread
         threading.Thread(target=list_roles_thread,daemon=True).start()
+    
 
+    """
+    attach_role_policy Method:
+
+    Purpose: This method attaches a specified policy to an IAM role. It prompts the user to input the role name and policy ARN, and then processes the attachment in a separate thread.
+
+    User Input: role_name and policy_arn are obtained from the user via simpledialog.askstring. If either is missing, an error message is displayed, and the method returns early.
+
+    process_attachment Function:
+    Purpose: Executes the policy attachment process and logs the result.
+
+    Steps:
+    Calls self.iam.attach_role_policy to attach the policy to the specified role.
+
+    Logs a success message if the attachment is successful.
+
+    Handles specific exceptions:
+
+    NoSuchEntityException: Indicates that either the role or policy does not exist.
+
+    ClientError: Catches errors related to the AWS client, including issues with permissions or invalid parameters.
+
+    Exception: Catches any other unexpected errors.
+
+    Updates GUI: Uses self.root.after to ensure that updates to the GUI (via update_log_viewer) are performed on the main thread.
+
+    Threading: Starts the process_attachment function in a separate thread to prevent blocking the main application thread. The daemon=True parameter ensures the thread will not prevent the program from exiting if it is still running.
+    """
+    def attach_role_policy(self):
+        """
+        Attaches a policy to an IAM role.
+        Prompts the user for role name and policy ARN, then attaches the policy to the specified role.
+        """
+        # Get role name and policy ARN for user input
+        role_name = simpledialog.askstring("Attach Policy","Enter role name:")
+        policy_arn = simpledialog.askstring("Attach Policy","Enter policy ARN:")
+
+
+        # Check if user input is valid
+        if not role_name or not policy_arn:
+            message = 'Role name and policy ARN must be provided.'
+            logging.error(message)
+            self.root.after(0,lambda: messagebox.showerror("Error",message))
+            return
         
+        def process_attachement():
+            """
+            Handles attaching the policy to the role and updates the log viewer.
+            """
+
+            try:
+                # attach the policy to role
+                self.iam.attach_role_policy(RoleName=role_name,PolicyArn=policy_arn)
+                message = f'Policy {policy_arn} attached to role {role_name} successfully.'
+                logging.info(message)
+            except self.iam.exceptions.NoSuchEntityException:
+                message = f'Role {role_name} or policy {policy_arn} does not exist.'
+                logging.errorr(message)
+            except ClientError as e:
+                message = f'ClientError attaching a policy {policy_arn} to role {role_name}: {e}'
+                logging.error(message)
+            except Exception as e:
+                message = f'Error attaching policy {policy_arn} to role {role_name}: {e}'
+                logging.error(message)
+
+            # Update The gui on the main thread
+            self.root.after(0,lambda: self.log_viewer(message))
+
+        0# starts the process in a new thread
+        threading.Thread(target=process_attachement,daemon=True).start()
+
+
