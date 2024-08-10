@@ -22,7 +22,7 @@ from tkinter import scrolledtext,ttk,messagebox,simpledialog
 import boto3
 import logging
 from log_handler import LogHandler
-from validate_json import validate_json
+from validate_json import validate_json,json
 from botocore.exceptions import ClientError
 
 
@@ -507,6 +507,105 @@ class IAMManagerApp:
                 
                 # Creat and start a thread
                 threading.Thread(target=user_deletion_task,daemon=True).start()
+        
+        """
+        2. validate_trust_policy Function
+        Purpose: To ensure the trust policy JSON contains a valid Principal field.
+
+        Implementation: Iterates over the Statement field in the trust policy. Checks if each statement includes the Principal field and whether it is a dictionary. Logs errors and displays an error message if validation fails.
+
+        3. Role Name Input
+        Functionality: Uses simpledialog.askstring to prompt the user to enter the role name. If no role name is provided, the method exits early.
+
+        4. Trust Policy Input and Validation
+        Functionality: Prompts the user to enter the trust policy JSON.
+
+        Validation: Checks if the provided trust policy is valid JSON using validate_json().
+        Parses the JSON and validates the structure with validate_trust_policy(). If any validation fails, appropriate error messages are logged and shown.
+
+        5. role_creation_task Function
+        Purpose: Contains the logic to create the IAM role using the provided trust policy.
+
+        Implementation: Uses self.iam.create_role to create the role.
+
+        Handles exceptions: EntityAlreadyExistsException: Logs and displays an error if the role already exists.
+
+        ClientError: Logs and displays an error for other client-related issues.
+
+        Exception: Catches any unexpected errors, logs them, and displays an error message.
+
+        UI Update: Uses self.root.after() to ensure that UI updates are performed on the main thread.
+
+        6. Thread Creation and Execution
+
+        Purpose: To run the role creation task in the background, keeping the main thread (UI) responsive.
+
+        Implementation: Creates a new thread and starts it to execute role_creation_task().
+
+        This refactoring enhances code readability and maintainability by: Separating validation logic into dedicated functions.
+        Providing clear error handling and logging.
+        Ensuring that user interface updates occur on the main thread.
+        """
+
+
+
+    def create_role(self):
+        def validate_trust_policy(trust_policy_obj):
+            statements = trust_policy_obj.get("Statement",[])
+            for statement in statements:
+                if "Principal" not in statement:
+                    logging.error("Missing 'Principal' field in trust policy statement.")
+                    self.root.after(0,messagebox.showerror,"Error","Trust policy is missing 'Principal' field.")
+                    return False
+                if not isinstance(statement['Principal'],dict):
+                    logging.error("'Principal' field must be an object in trust policy statement.")
+                    self.root.after(0,messagebox.showerror,"Error","'Principal' field must be an object.")
+                    return False
+            return True
+        
+        role_name = simpledialog.askstring("Create Role","Enter rolename:")
+        if not role_name:
+            return # Exit if role name is not provided
+        
+        trust_policy = simpledialog.askstring("Create Role","Enter trust policy JSON:")
+        if not validate_json(trust_policy):
+            logging.error("Invalid JSON format for trust policy.")
+            self.root.after(0,messagebox.showerror,"Error","Invalid JSON format for trust policy.")
+            return
+        
+        try:
+            trust_policy_obj = json.loads(trust_policy)
+            if not validate_trust_policy(trust_policy_obj):
+                return
+        except json.JSONDecodeError:
+            logging.error("Error decoding trust policy JSON.")
+            self.root.after(0,messagebox.showerror,"Error","Error decoding trust policy json")
+            return
+        
+        def role_creation_task():
+            try:
+                # Create role with the provided trust policy
+                self.iam.create_role(
+                    RoleName=role_name,
+                    AssumeRolePolicyDocument=trust_policy
+                )
+                logging.info(f'Role {role_name} created successfully.')
+                self.root.after(0,messagebox.showinfo,"Success",f'Role {role_name} created successfully.')
+            except self.iam.exceptions.EntityAlreadyExistsException:
+                logging.error(f'Role {role_name} already exists.')
+                self.root.after(0,messagebox.showerror,"Error",f'Role {role_name} already exists.')
+            except ClientError as e:
+                logging.error(f'ClientError creating role: {role_name}: {e}')
+                self.root.after(0,messagebox.showerror,"Error",f'ClientError creating role {role_name}: {e}')
+            except Exception as e:
+                logging.error(f'Unexpected error creating role: {role_name}: {e}')
+                self.root.after(0,messagebox.showerror,"Error",f'Unexpected error creating role {role_name}: {e}')
+        
+        # Create and start the thread
+        thread = threading.Thread(target=role_creation_task,daemon=True)
+        thread.start()
+
+
 
 
 
