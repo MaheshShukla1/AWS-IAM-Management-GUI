@@ -794,5 +794,46 @@ class IAMManagerApp:
 
         0# starts the process in a new thread
         threading.Thread(target=process_attachement,daemon=True).start()
+    
+    def detach_role_policy(self):
+        """
+        Detaches a policy from an IAM role.
+        Prompts the user for the role name and policy ARN, then detaches the policy to the specified role.
+        """
+        # Get role name and policy ARN from the user
+        role_name = simpledialog.askstring("Detach Policy","Enter role name:")
+        policy_arn = simpledialog.askstring("Detach Policy","Enter Policy ARN:")
+
+        # Check if user input is valid
+        if not role_name or not policy_arn:
+            message = 'Role name and PolicyArn must be provided.'
+            logging.error(message)
+            self.root.after(0,lambda: messagebox.showerror("Error",message))
+            return
+        
+        def process_attachment():
+            """
+            Handles attaching the policy to the role and updates the log viewer.
+            """
+            try:
+                # Attach the policy to the role 
+                self.iam.detach_role_policy(RoleName=role_name,PolicyArn=policy_arn)
+                message = f'Policy {policy_arn} detached from role {role_name} successfully.'
+                logging.info(message)
+            except self.iam.exceptions.NoSuchEntityException:
+                message = f'Role {role_name} or policy {policy_arn} successfully.'
+                logging.error(message)
+            except ClientError as e:
+                message = f'Error detaching policy {policy_arn} from role {role_name}: {e}'
+                logging.error(message)
+            except Exception as e:
+                message = f'Error detaching policy {policy_arn} from role {role_name}: {e}'
+                logging.error(message)
+
+            # Update the GUI on the main thread
+            self.root.after(0,lambda: self.log_viewer(message))
+        
+        # Start the process in a new thread
+        threading.Thread(target=process_attachment,daemon=True).start()
 
 
