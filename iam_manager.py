@@ -927,6 +927,58 @@ class IAMManagerApp:
         
         # Start the policy listing process in a new thread.
         threading.Thread(target=list_policies_thread,daemon=True).start()
+    
+    def delete_policy(self):
+        """
+        Deletes an IAM policy based on the provided ARN.
+
+        This method prompts the user to enter the Arn of the policy they wish to delete.
+        It confirms the deletions with the user and handles the deletion process in a seperate thread to keep the GUI component.
+        """
+        def run_deletion():
+            try:
+                policy_arn = simpledialog.askstring("Delete Policy","Enter Policy ARN:")
+                if not policy_arn:
+                    logging.warning("No policy ARN provided.")
+                    self.root.after(0,lambda: messagebox.showwarning("Warning","Policy Arn is required to delete a policy."))
+                    return
+                
+                confirm = messagebox.askyesno("Confirm deletion",f"Are you sure you want to delete policy {policy_arn}")
+                if not confirm:
+                    logging.info(f"Deletion of policy {policy_arn} canceled by the user.")
+                    return
+                
+                # Attempt to delete the policy
+                self.iam.delete_policy(PolicyArn=policy_arn)
+                log_message = f"Policy {policy_arn} deleted successfully."
+                logging.info(log_message)
+
+                # Update the GUI  and modify the user on the main thread
+                self.roto.after(0,lambda: self.log_viewer(log_message))
+                self.root.after(0,lambda: self.log_viewer("Success",log_message))
+            
+            except self.iam.exceptions.NoSuchEntityException:
+                error_message = f'Policy {policy_arn} does not exist.'
+                logging.error(error_message)
+                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: messagebox.showerror("Error",error_message))
+            
+            except ClientError as e:
+                error_message = f'ClientError deleting policy {policy_arn}: {e}'
+                logging.error(error_message)
+                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: messagebox.showerror("Error",error_message))
+            
+            except Exception as e:
+                error_message = f'Unexpected error deleting policy {policy_arn}: {e}'
+                logging.error(error_message)
+                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.roto.after(0,lambda: messagebox.showerror("Error",error_message))
+            
+        # Run the deletion in a new thread to keep the GUI responsive.
+        threading.Thread(target=run_deletion,daemon=True).start()
+
+
 
 
 
