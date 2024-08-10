@@ -200,14 +200,98 @@ class IAMManagerApp:
         search_thread = threading.Thread(target=search_user_thread,daemon=True)
         search_thread.start()
 
+    """
+    search_role Method:
+    Purpose: Searches for an IAM role by its name.
+    
+    Input Handling: Retrieves the role name from the search_role_entry widget.
+     If the role name is empty, an error message is displayed using messagebox.showerror.
 
+     Logging: Logs the start of the role search.
+
+     Threaded Operation: The actual search is performed in a separate thread (search_role_thread) to keep the UI responsive.
+     Calls self.iam.get_role(RoleName=role_name) to fetch the role information from AWS IAM.
+     On success, extracts the role name and ARN from the response and updates the log viewer in the main thread using self.root.after.
+     If an error occurs (e.g., role not found), it catches the ClientError exception and updates the log viewer with the error message.
+     search_policy Method:
+     """
+    
     def search_role(self):
         role_name = self.search_role_entry.get().strip()
         if not role_name:
             messagebox.showerror(f"Input Error","Please enter role name.")
             return
         logging.info(f'Starting search for role: {role_name}')
-    
+        def search_role_thread():
+            try:
+                response = self.iam.get_role(RoleName=role_name)
+                role_info = response['Role']
+                name = role_info['RoleName']
+                arn = role_info['Arn']
+                message = f"Role found:\nName: {name}\nArn: {arn}"
+                self.root.after(0,lambda: self.log_viewer(message))
+            except ClientError as e:
+                error_message = f"Error finding role: {e}"
+                self.root.after(0,lambda: self.log_viewer(error_message))
+
+        threading.Thread(target=search_role_thread,daemon=True).start()
+
+
+        """
+        search_policy Method:
+        Purpose: Searches for IAM policies by name, with a partial match.
+        
+        Threaded Operation: Defines an inner function perform_policy_search that handles the search process.
+        Retrieves the list of policies using self.iam.list_policies, limiting the scope to 'Local' and a maximum of 1000 items.
+        Iterates over the policies to find those whose names contain the input string (case-insensitive match).
+
+        If a match is found, the policy name and ARN are added to the results list.
+        If no match is found, a message indicating no policies were found is added to the results list.
+        The results are formatted into a single message string and displayed in the log viewer.
+        If an error occurs during the policy search, it catches the ClientError exception and displays an error message.
+        
+        Input Handling: Retrieves the policy name from the search_policy_entry widget.
+        Logs a message if no policy name is entered.
+
+        Threaded Execution: Runs perform_policy_search in a separate thread to maintain UI responsiveness.
+        """
+
+    def search_policy(self):
+        def perform_policy_search(policy_name):
+            try:
+                # Fetch the list of policies
+                policies = self.iam.list_policies(Scope='Local',MaxItems=1000)
+                found = False
+                results = []
+                # Search for policies matching the name
+                for policy in policies['Policies']:
+                    if policy_name.lower() in policy['PolicyName'].lower(): # Case Insensitive-search
+                        name = policy['PolicyName']
+                        arn = policy['Arn']
+                        results.append(f"Policy found:\nName: {name}\nArn: {arn}")
+                        found = True
+                if not found:
+                    results.append(f"No policy found with the name containing: {policy_name}")
+                
+                # Format the results message
+                message = "\n".join(results)
+                # Update the log viewer with the search results
+                self.root.after(0,lambda: self.log_viewer(message))
+            
+            except ClientError as e:
+                error_message = f"An errror occurred: {e}"
+                # Update the log viewer with the error message
+                self.root.after(0,lambda: self.log_viewer(error_message))
+
+        # Fetch the policy name from the entry Entry Widget
+        policy_name = self.search_policy_entry.get()
+        if not policy_name:
+            logging.info("No policy name entered.")
+            return
+        
+        # Run the search in a seperate thread
+        threading.Thread(target=perform_policy_search,args=(policy_name,)).start()
+
 
 
         
