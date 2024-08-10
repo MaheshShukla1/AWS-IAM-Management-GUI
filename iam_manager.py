@@ -659,3 +659,69 @@ class IAMManagerApp:
         thread = threading.Thread(target=role_deletion_task)
         thread.start()
 
+    def list_roles(self):
+        """
+        List all IAM Roles and their attached policies
+        Displays the roles and their policies in the log viewer
+        """
+        def fetch_policies_for_roles(role_name):
+            """
+            Fetches and formats the policies attached to a specified IAM role
+
+            Parameters:
+            role_name (str): The name of the IAM Role
+
+            Returns:
+            str: formattted string with role name and attached policies for error message.
+            """
+            try:
+                policy_response = self.iam.list_attached_role_policies(RoleName=role_name)
+                policies = policy_response.get('AttachedPolicies',[])
+                policy_arn = [policy['PolicyArn'] for policy in policies]
+                return f'Role: {role_name}\nPolicies: {", ".join(policy_arn) if policy_arn else "No policies attached"}\n'
+            except ClientError as e:
+                return f'Role: {role_name}\nPolicies: Error fetching policies: {e}\n'
+            except Exception as e:
+                return f'Role: {role_name}\nPolicies: Error fetching policies: {e}\n'
+            
+        def list_roles_thread():
+            """
+            Lists all IAM Roles and fetches their attached policies.
+            Updates the log viewer with the roles and policies informatio.
+            """
+            try:
+                # List all roles
+                response = self.iam.list_roles()
+                roles = response.get('Roles',[])
+
+                if not roles:
+                    message = 'No roles found'
+                    self.root.after(0,lambda: self.log_viewer(message))
+                    return
+                
+                roles_info = []
+                role_names = [role['RoleName'] for role in roles]
+
+                # Fetch policies for all roles in parallel
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    future_to_role = {executor.submit(fetch_policies_for_roles, role_name): role_name for role_name in role_names}
+                    for future in future_to_role:
+                        role_info = future.result()
+                        roles_info.append(role_info)
+                
+                # Logg all roles' information
+                roles_text = "\n".join(roles_info)
+                message = f'Roles listed: \n{roles_text}'
+                self.root.after(0,lambda: self.log_viewer(message))
+
+            except ClientError as e:
+                message = f'ClientError listing roles: {e}'
+                self.root.after(0,lambda: self.log_viewer(message))
+            except Exception as e:
+                message = f'Error listing roles: {e}'
+                self.root.after(0,lambda: self.log_viewer(message))
+        
+        # Start the thread
+        threading.Thread(target=list_roles_thread,daemon=True).start()
+
+        
