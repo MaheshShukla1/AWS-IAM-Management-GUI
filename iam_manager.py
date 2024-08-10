@@ -606,23 +606,56 @@ class IAMManagerApp:
         thread.start()
 
 
+    def delete_role(self):
+        """
+        Prompts the user to delete a specified IAM Role. this includes:
+        - Confirming the deletion
+        - Detaching the deletion
+        - Deleting inline policies
+        - Removing the role itself
+        """
 
+        role_name = simpledialog.askstring("Delete Role","Enter role name:")
+        if role_name:
+            if not messagebox.askyesno("Confirm deletion",f'Are you sure you want to delete role {role_name}?'):
+                logging.info(f'Role deletion for {role_name} was canceled by the user.')
+                return
+            
+        def role_deletion_task():
+            """
+            Task executed in a seperate thread to delete the IAM Role
+            """
+            try:
+                # Detach attached policies
+                attached_policies = self.iam.list_attached_role_policies(RoleName=role_name).get('AttachedPolicies',[])
+                if attached_policies:
+                    for policy in attached_policies:
+                        self.iam.detach_role_policy(RoleName=role_name,PolicyArn=policy['PolicyArn'])
+                        logging.info(f'Policy {policy['PolicyArn']} detached from role {role_name} successfully.')
+                else:
+                    logging.info(f'No attached policy found for role {role_name}')
+                
+                # Delete inline policies
+                inline_policies = self.iam.list_role_policies(RoleName=role_name).get('PolicyNames',[])
+                if inline_policies:
+                    for policy_name in inline_policies:
+                        self.iam.delete_role_policy(RoleName=role_name,PolicyName=policy_name)
+                        logging.info(f'Inline policy {policy_name} for role {role_name} deleted successfully.')
+                else:
+                    logging.info(f'No inline policies found for role {role_name}')
+                
+                # Delete the role
+                self.iam.delete_role(RoleName=role_name)
+                logging.info(f'Role {role_name} deleted successfully.')
+            
+            except self.iam.exceptions.NoSuchEntityException:
+                logging.error(f'Role {role_name} does not exists.')
+                self.root.after(0,messagebox.showerror,"Error",f'Role {role_name} does not exists.')
+            except ClientError as e:
+                logging.error(f'ClientError deleting role {role_name}: {e}')
+                self.root.after(0,messagebox.showerror,"Error",f'Unexpected error deleting role {role_name}: {e}')
 
-
-
-
-
-
-
-
-        
-
-
-
-
-
-
-
-
-
+        # Start the deletion task in a seperate thread
+        thread = threading.Thread(target=role_deletion_task)
+        thread.start()
 
