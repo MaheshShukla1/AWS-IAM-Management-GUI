@@ -978,6 +978,53 @@ class IAMManagerApp:
         # Run the deletion in a new thread to keep the GUI responsive.
         threading.Thread(target=run_deletion,daemon=True).start()
 
+    def create_group(self):
+        """
+        Creates an IAM group based on the user-provided group name.
+
+        This method prompts the user to enter the name of the group they wish to create, 
+        handles the creation process in a seperate thread to keep the GUI response,
+        and provides feedback to the user on success or future.
+        """
+
+        def run_creation():
+            try:
+                # Prompt the user for the group name
+                group_name = simpledialog.askstring("Create group","Enter group name:")
+                if not group_name:
+                    logging.warning("No group name provided.")
+                    self.root.after(0,lambda: messagebox.showwarning("Warning","Group name is required to create a group."))
+                    return
+                
+                # Attempt to create an IAM Grooup
+                self.iam.create_group(GroupName=group_name)
+                log_message = f'Group "{group_name}" created successfully.'
+                logging.info(log_message)
+
+                # Update the GUI on main thread and notify the user
+                self.root.after(0,lambda: self.log_viewer(log_message)) 
+                self.root.after(0,lambda: messagebox.showinfo("Success",log_message))
+
+            except self.iam.exceptions.EntityAlreadyExistsException:
+                error_message = f'Group "{group_name}" already exists.'
+                logging.error(error_message)
+                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: messagebox.showerror("Error",error_message))
+            
+            except ClientError as e:
+                error_message = f'ClientError creating group {group_name}: {e}'
+                logging.error(error_message)
+                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: messagebox.showerror("Error",error_message))
+            
+            except Exception as e:
+                error_message = f'Unexpected error creating group: {group_name}: {e}'
+                logging.error(error_message)
+                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: messagebox.showerror("Error",error_message))
+            
+        # Start a new thread for creating the group to keep the GUI responsive
+        threading.Thread(target=run_creation,daemon=True).start()
 
 
 
