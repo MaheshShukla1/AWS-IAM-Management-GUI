@@ -1025,7 +1025,79 @@ class IAMManagerApp:
             
         # Start a new thread for creating the group to keep the GUI responsive
         threading.Thread(target=run_creation,daemon=True).start()
+    
+    def delete_group(self):
+      """
+    Deletes an AWS IAM group along with its associated policies and users.
 
+     This method performs the following actions:
+    1. Prompts the user to enter the name of the group to delete.
+    2. Detaches all policies attached to the specified group.
+    3. Removes all users from the specified group.
+    4. Deletes the group itself.
+
+    The method runs in a separate thread to avoid blocking the GUI. It updates the GUI with success or error messages based on the outcome of the operation.
+
+    If the group does not exist or if any other error occurs, appropriate error messages are logged and displayed to the user.
+
+    Usage:
+        - User is prompted to enter the group name.
+        - Confirm deletion dialog is shown to ensure user intention.
+        - Actions are performed in the following order: detach policies, remove users, delete group.
+        - Success or error messages are displayed in a message box and logged.
+
+    Exceptions:
+        - `self.iam.exceptions.NoSuchEntityException` if the specified group does not exist.
+        - `ClientError` for any AWS client errors encountered during the process.
+        - `Exception` for any other unexpected errors.
+
+    Note:
+        - This method assumes the `self.iam` object is an instance of `boto3` IAM client.
+        - The method is run in a separate thread to keep the GUI responsive.
+    """
+      def run_deletion():
+        group_name = simpledialog.askstring("Delete Group", "Enter group name:")
+        if not group_name:
+            return
+
+        try:
+            # Detach all policies
+            attached_policies = self.iam.list_attached_group_policies(GroupName=group_name).get('AttachedPolicies', [])
+            for policy in attached_policies:
+                self.iam.detach_group_policy(GroupName=group_name, PolicyArn=policy['PolicyArn'])
+                logging.info(f'Policy {policy["PolicyArn"]} detached from group {group_name} successfully.')
+
+            # Remove all users
+            group_members = self.iam.get_group(GroupName=group_name).get('Users', [])
+            for user in group_members:
+                self.iam.remove_user_from_group(GroupName=group_name, UserName=user['UserName'])
+                logging.info(f'User {user["UserName"]} removed from group {group_name}.')
+
+            # Finally delete the group
+            self.iam.delete_group(GroupName=group_name)
+            success_message = f'Group {group_name} deleted successfully.'
+            logging.info(success_message)
+            self.root.after(0, lambda: self.update_log_viewer(success_message))
+            messagebox.showinfo("Success", success_message)
+
+        except self.iam.exceptions.NoSuchEntityException:
+            error_message = f'Group {group_name} does not exist.'
+            logging.error(error_message)
+            self.root.after(0, lambda: self.update_log_viewer(error_message))
+            messagebox.showerror("Error", error_message)
+        except ClientError as e:
+            error_message = f'ClientError deleting group {group_name}: {e}'
+            logging.error(error_message)
+            self.root.after(0, lambda: self.update_log_viewer(error_message))
+            messagebox.showerror("Error", error_message)
+        except Exception as e:
+            error_message = f'Error deleting group {group_name}: {e}'
+            logging.error(error_message)
+            self.root.after(0, lambda: self.update_log_viewer(error_message))
+            messagebox.showerror("Error", error_message)
+
+      # Start a new thread for deleting the group
+      threading.Thread(target=run_deletion, daemon=True).start()
 
 
 
