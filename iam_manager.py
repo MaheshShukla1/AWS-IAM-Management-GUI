@@ -418,7 +418,100 @@ class IAMManagerApp:
         # Start the thread
         threading.Thread(target=task,daemon=True).start()
 
-                      
+
+        """
+        The delete_user method facilitates the deletion of an IAM user from AWS, including a comprehensive cleanup of related resources. It uses threading to perform operations in the background, keeping the UI responsive.
+
+        Prompt for Username: Uses simpledialog.askstring to request the username of the IAM user to be deleted.
+        If the user provides a username and confirms deletion with messagebox.askyesno, the method proceeds; otherwise, it exits.
+        
+        Threaded Task Function:
+        Delete Login Profile: Attempts to delete the login profile for the user with self.iam.delete_login_profile.
+        Logs success if the profile is deleted or skips if it does not exist.
+
+        Delete Access Keys: Lists access keys using self.iam.list_access_keys.
+        Deletes each access key using self.iam.delete_access_key and logs the action.
+
+        Delete Inline Policies: Lists inline policies with self.iam.list_user_policies.
+        Deletes each inline policy using self.iam.delete_user_policy and logs the action.
+        Detach and Delete Attached Policies: Lists attached policies with self.iam.list_attached_user_policies.
+        Detaches each policy with self.iam.detach_user_policy and logs the action.
+
+        Delete MFA Devices: Lists MFA devices with self.iam.list_mfa_devices.
+        Deactivates and deletes each MFA device using self.iam.deactivate_mfa_device and self.iam.delete_virtual_mfa_device, logging the actions.
+
+        Delete the User: Deletes the user with self.iam.delete_user and logs success.
+
+        Error Handling: Catches and logs errors for non-existent users (NoSuchEntityException), client errors (ClientError), and other exceptions.
+
+        Updates the GUI with appropriate success or error messages using messagebox.showinfo or messagebox.showerror.
+
+        Thread Execution: Executes the user_deletion_task function in a separate thread, ensuring the main thread (UI) remains responsive during the deletion process.
+        """
+
+    def delete_user(self):
+        user_name = simpledialog.askstring("Delete User","Enter username:")
+        if user_name:
+            if messagebox.askyesno("Confirm Deletion",f"Are you sure you want to delete user {user_name}"):
+
+                def user_deletion_task():
+                    try:
+                        # Delete login profile if exists
+                        try:
+                            self.iam.delete_login_profile(UserName=user_name)
+                            logging.info(f'Login profile for user {user_name} deleted successfully.')
+                        except self.iam.exceptions.NoSuchEntityException:
+                            logging.info(f'No login profile for user {user_name}. Skipping.')
+
+                        # Delete Access keys
+                        access_keys = self.iam.list_access_keys(UserName=user_name).get('AccessKeyMetaData',[])
+                        for key in access_keys:
+                            self.iam.delete_access_key(UserName=user_name,AccessKeyId=key['AccessKeyId'])
+                            logging.info(f'Access key {key["AccessKeyId"]} for user {user_name} deleted successfully.')
+
+                        # Delete inline policies
+                        inline_policies = self.iam.list_user_policies(UserName=user_name).get('PolicyNames',[])
+                        for policy_name in inline_policies:
+                            self.iam.delete_user_policy(UserName=user_name,PolicyName=policy_name)
+                            logging.info(f'Inline policy {policy_name} for user {user_name} deleted successfully.')
+                        
+                        # Detach and delete attached policies
+                        attached_policies = self.iam.list_attached_user_policies(UserName=user_name).get('AttachedPolicies',[])
+                        for policy in attached_policies:
+                            self.iam.detach_user_policy(UserName=user_name,PolicyArn=policy['PolicyArn'])
+                            logging.info(f'Policy {policy['PolicyArn']} detached from user {user_name} successfully.')
+
+                        # Delete MFA Devices
+                        mfa_devices = self.iam.list_mfa_devices(UserName=user_name).get('MFADevices',[])
+                        for mfadevice in mfa_devices:
+                            self.iam.deactivate_mfa_device(UserName=user_name,SerialNumber=mfadevice['SerialNumber'])
+                            self.iam.delete_virtual_mfa_device(SerialNumber=mfadevice['SerialNumber'])
+                            logging.info(f'MFA Devices {mfa_devices['SerialNumber']} for user {user_name} deleted successfully.')
+                        
+                        # Finnaly, delete the user
+                        self.iam.delete_user(UserName=user_name)
+                        logging.info(f'User {user_name} deleted successfully.')
+
+                        # Update Gui on the main thread
+                        self.root.after(0,messagebox.showinfo,"Success",f"User {user_name} deleted successfully.")
+
+                    except self.iam.exceptions.NoSuchEntityException:
+                        logging.error(f'User {user_name} does not exist.')
+                        self.root.after(0,messagebox.showerror,"Error",f'User {user_name} does not exist.')
+                    except ClientError as e:
+                        logging.error(f'ClientError deleting user {user_name}: {e}')
+                        self.root.after(0,messagebox.showerror,"Error",f'ClientError deleting user {user_name}: {e}')
+                    except Exception as e:
+                        logging.error(f'Error deleting user {user_name}: {e}')
+                        self.root.after(0,messagebox.showerror,"Error",f'Error deleting user {user_name}: {e}')
+                
+                # Creat and start a thread
+                threading.Thread(target=user_deletion_task,daemon=True).start()
+
+
+
+
+
 
 
 
