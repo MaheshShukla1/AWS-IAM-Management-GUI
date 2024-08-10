@@ -54,6 +54,7 @@ class IAMManagerApp:
 
         # Initialize IAM Client
         self.iam = boto3.client('iam')
+        self.sts = boto3.client('sts')
 
         # Initialize Dialog State
         self.dialog_active = False
@@ -292,9 +293,136 @@ class IAMManagerApp:
         # Run the search in a seperate thread
         threading.Thread(target=perform_policy_search,args=(policy_name,)).start()
 
+        """
+        The create_user method is designed to create an IAM user on AWS, with optional password setting functionality, all while maintaining the responsiveness of the UI through the use of threading.
 
-
+        User Input Collection: Prompts the user for a username using simpledialog.askstring. If the user cancels or leaves it blank, the method returns early.
+        Prompts for a password with the option to leave it empty. If the user cancels this prompt, the method returns immediately.
         
+        Task Function (Threaded): The task of creating the user is handled within a separate thread (task) to prevent the UI from freezing during the operation.
+        AWS Account ID: Uses STS (get_caller_identity) to retrieve the AWS account ID, necessary for generating the user console link.
+        User Creation: Creates the IAM user with the provided username via create_user.
+        Password Handling: If a password is provided, it sets up a login profile for the user with this password using create_login_profile.
+        Logging: If successful, it logs a message with the user's console link.
+        If the user already exists, it catches the EntityAlreadyExistsException and logs an appropriate message.
+        Handles other potential errors like ClientError and generic exceptions, logging relevant messages for each.
+        The results are updated in the UI using self.root.after to ensure the UI is updated in the main thread.
+        Thread Execution: The task function is executed in a new thread, keeping the main thread (UI) responsive.
+        """
+
+    def create_user(self):
+        # Collect user input on the main thread
+        user_name = simpledialog.askstring("Create User","Enter username:")
+        if not user_name:
+            return # If the user cancels the input or doesn't provide a username, return immediately.
+        
+        password = simpledialog.askstring("Create User","Enter password (leave empty if no custom password):",
+        show ='*')
+
+        # Ensure doesn't create an account if they pass cancel on password dialog
+        if password is None:
+            return
+        
+        def task(user_name,password):
+            try:
+                # Fetch the AWS Account ID using sts
+                response = self.sts.get_caller_identity()
+                account_id = response['Account']
+
+                # Create the user
+                self.iam.create_user(UserName=user_name)
+
+                # Set a custom password if needed
+                if password:
+                    self.iam.create_login_profile(UserName=user_name,Password=password,PasswordResetRequired=False)
+                
+                user_console_link = f"https://{account_id}.signin.aws.amazon.com/console"
+
+                log_message = f"User {user_name} created successfully. \nUser Console Link: {user_console_link}"
+                self.root.after(0,lambda: self.log_viewer(log_message))
+            except self.iam.exceptions.EntityAlreadyExistsException:
+                log_message = f"User {user_name} already exists."
+                self.root.after(0,lambda: self.log_viewer(log_message))
+            except ClientError as e:
+                log_message = f"ClientError creating user {user_name}: {e}"
+                self.root.after(0,lambda: self.log_viewer(log_message))
+            except Exception as e:
+                log_message = f"Error creating user {user_name}: {e}"
+                self.root.after(0,lambda: self.log_viewer(log_message))
+
+
+        # Start a new thread for creating a use
+        threading.Thread(target=task,args=(user_name,password),daemon=True).start()
+
+        """
+        The list_users method is responsible for listing all IAM users in an AWS account and displaying their associated attached policies. It leverages threading to perform the task in the background, ensuring the UI remains responsive.
+
+        Task Function (Threaded): The core functionality is encapsulated within a task function, which is executed in a separate thread to avoid blocking the main thread (UI).
+        
+        User Listing: Calls self.iam.list_users() to retrieve a list of all IAM users.
+        If no users are found, it logs a message saying "No users found."
+        
+        Policy Retrieval for Each User: For each user, the method attempts to list attached policies using self.iam.list_attached_user_policies.
+        Collects the ARNs of the attached policies and formats them as a comma-separated string. If no policies are attached, it notes "No policies attached."
+        
+        If there's an error fetching policies, it logs the error message.
+        User Information Collection: Collects and formats the user's name and attached policy information into a readable format.
+        If there are multiple users, it aggregates all their information into a single string.
+        
+        Logging: After processing all users, it logs the collected information in the UI.
+        If there are errors during user listing or policy retrieval, the method catches these errors and logs appropriate error messages.
+
+        Thread Execution: The task function is executed in a new thread, ensuring that the UI remains responsive while the user and policy data are fetched.
+        """
+
+    def list_users(self):
+        def task():
+            try:
+                # List all users
+                response = self.iam.list_users()
+                users = response.get('Users',[])
+
+                if not users:
+                    message = "No user found."
+                    self.root.after(0,lambda: self.log_viewer(message))
+                    return
+                
+                users_info = []
+                for user in users:
+                    user_name = user['UserName']
+                    try:
+                        # List attached policies for the user
+                        policy_response = self.iam.list_attached_user_policies(UserName=user_name)
+                        policies = policy_response.get('AttachedPolicies', [])
+                        policy_arn = [policy['PolicyArn'] for policy in policies]
+                        policies_text = ", ".join(policy_arn) if policy_arn else "No policies attached."
+                    except ClientError as e:
+                        policies_text = f"Error fetching policies: {e}"
+                    
+                    # Collect all user's information
+                    user_info = f'User: {user_name}\nPolicies: {policies_text}\n'
+                    users_info.append(user_info)
+                
+                # Log all user's information
+                users_text = "\n".join(users_info)
+                message = f'Users listed successfully:\n{users_text}'
+                self.root.after(0,lambda: self.log_viewer(message))
+
+            except ClientError as e:
+                message = f'ClientError listing users: {e}'
+                self.root.after(0,lambda: self.log_viewer(message))
+            except Exception as e:
+                message = f'Error listing users: {e}'
+                self.root.after(0,lambda: self.log_viewer(message))
+        
+        # Start the thread
+        threading.Thread(target=task,daemon=True).start()
+
+                      
+
+
+
+
         
 
 
