@@ -48,7 +48,7 @@ class IAMManagerApp:
     """
     def __init__(self,root):
         self.root = root
-        self.root.title("IAM Manager")
+        self.root.title("AWS IAM Manager")
         self.root.geometry("900x600")
         self.root.configure(bg="#f0f0f0")
 
@@ -177,7 +177,16 @@ class IAMManagerApp:
     Thread Execution: A Thread object is created and started with the target as search_user_thread. This is marked as a daemon thread, meaning it will automatically exit when the main program exits.
     """    
 
-   
+    
+    def update_log_viewer(self,message):
+        try:
+            self.app.log_viewer.configure(state='normal')
+            self.app.log_viewer.insert(tk.END,message+'\n')
+            self.app.log_viewer.configure(state='disabled')
+            self.app.log_viewer.yview(tk.END)
+        except Exception as e:
+            logging.error(f'Error updating log viewer: {e}')
+
     def search_user(self):
         user_name = self.search_user_entry.get().strip() # Correct assign the username
         if not user_name:
@@ -193,7 +202,7 @@ class IAMManagerApp:
                 name = user_info['UserName']
                 arn = user_info['Arn']
                 message = f'User found:\nName: {name}\nArn: {arn}'
-                self.root.after(0,lambda: self.log(message))
+                self.root.after(0,lambda: self.update_log_viewer(message))
             except ClientError as e:
                 error_message = f"Error finding user: {e}"
                 self.root.after(0,lambda: self.update_log_viewer(error_message))
@@ -231,10 +240,10 @@ class IAMManagerApp:
                 name = role_info['RoleName']
                 arn = role_info['Arn']
                 message = f"Role found:\nName: {name}\nArn: {arn}"
-                self.root.after(0,lambda: self.log_viewer(message))
+                self.root.after(0,lambda: self.update_log_viewer(message))
             except ClientError as e:
                 error_message = f"Error finding role: {e}"
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
 
         threading.Thread(target=search_role_thread,daemon=True).start()
 
@@ -278,12 +287,12 @@ class IAMManagerApp:
                 # Format the results message
                 message = "\n".join(results)
                 # Update the log viewer with the search results
-                self.root.after(0,lambda: self.log_viewer(message))
+                self.root.after(0,lambda: self.update_log_viewer(message))
             
             except ClientError as e:
                 error_message = f"An errror occurred: {e}"
                 # Update the log viewer with the error message
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
 
         # Fetch the policy name from the entry Entry Widget
         policy_name = self.search_policy_entry.get()
@@ -340,16 +349,16 @@ class IAMManagerApp:
                 user_console_link = f"https://{account_id}.signin.aws.amazon.com/console"
 
                 log_message = f"User {user_name} created successfully. \nUser Console Link: {user_console_link}"
-                self.root.after(0,lambda: self.log_viewer(log_message))
+                self.root.after(0,lambda: self.update_log_viewer(log_message))
             except self.iam.exceptions.EntityAlreadyExistsException:
                 log_message = f"User {user_name} already exists."
-                self.root.after(0,lambda: self.log_viewer(log_message))
+                self.root.after(0,lambda: self.update_log_viewer(log_message))
             except ClientError as e:
                 log_message = f"ClientError creating user {user_name}: {e}"
-                self.root.after(0,lambda: self.log_viewer(log_message))
+                self.root.after(0,lambda: self.update_log_viewer(log_message))
             except Exception as e:
                 log_message = f"Error creating user {user_name}: {e}"
-                self.root.after(0,lambda: self.log_viewer(log_message))
+                self.root.after(0,lambda: self.update_log_viewer(log_message))
 
 
         # Start a new thread for creating a use
@@ -385,7 +394,7 @@ class IAMManagerApp:
 
                 if not users:
                     message = "No user found."
-                    self.root.after(0,lambda: self.log_viewer(message))
+                    self.root.after(0,lambda: self.update_log_viewer(message))
                     return
                 
                 users_info = []
@@ -407,14 +416,14 @@ class IAMManagerApp:
                 # Log all user's information
                 users_text = "\n".join(users_info)
                 message = f'Users listed successfully:\n{users_text}'
-                self.root.after(0,lambda: self.log_viewer(message))
+                self.root.after(0,lambda: self.update_log_viewer(message))
 
             except ClientError as e:
                 message = f'ClientError listing users: {e}'
-                self.root.after(0,lambda: self.log_viewer(message))
+                self.root.after(0,lambda: self.update_log_viewer(message))
             except Exception as e:
                 message = f'Error listing users: {e}'
-                self.root.after(0,lambda: self.log_viewer(message))
+                self.root.after(0,lambda: self.update_log_viewer(message))
         
         # Start the thread
         threading.Thread(target=task,daemon=True).start()
@@ -697,7 +706,7 @@ class IAMManagerApp:
 
                 if not roles:
                     message = 'No roles found'
-                    self.root.after(0,lambda: self.log_viewer(message))
+                    self.root.after(0,lambda: self.update_log_viewer(message))
                     return
                 
                 roles_info = []
@@ -713,14 +722,14 @@ class IAMManagerApp:
                 # Logg all roles' information
                 roles_text = "\n".join(roles_info)
                 message = f'Roles listed: \n{roles_text}'
-                self.root.after(0,lambda: self.log_viewer(message))
+                self.root.after(0,lambda: self.update_log_viewer(message))
 
             except ClientError as e:
                 message = f'ClientError listing roles: {e}'
-                self.root.after(0,lambda: self.log_viewer(message))
+                self.root.after(0,lambda: self.update_log_viewer(message))
             except Exception as e:
                 message = f'Error listing roles: {e}'
-                self.root.after(0,lambda: self.log_viewer(message))
+                self.root.after(0,lambda: self.update_log_viewer(message))
         
         # Start the thread
         threading.Thread(target=list_roles_thread,daemon=True).start()
@@ -791,7 +800,7 @@ class IAMManagerApp:
                 logging.error(message)
 
             # Update The gui on the main thread
-            self.root.after(0,lambda: self.log_viewer(message))
+            self.root.after(0,lambda: self.update_log_viewer(message))
 
         0# starts the process in a new thread
         threading.Thread(target=process_attachement,daemon=True).start()
@@ -832,7 +841,7 @@ class IAMManagerApp:
                 logging.error(message)
 
             # Update the GUI on the main thread
-            self.root.after(0,lambda: self.log_viewer(message))
+            self.root.after(0,lambda: self.update_log_viewer(message))
         
         # Start the process in a new thread
         threading.Thread(target=process_attachment,daemon=True).start()
@@ -879,7 +888,7 @@ class IAMManagerApp:
                 logging.error(message)
             
             # Update the GUI on the main thread
-            self.root.after(0,lambda: self.log_viewer(message))
+            self.root.after(0,lambda: self.update_log_viewer(message))
         
         # start the policy creation process in a seperate thread
         threading.Thread(target=process_creation,daemon=True).start()
@@ -900,7 +909,7 @@ class IAMManagerApp:
                 if not policies:
                     message = 'No policies found.'
                     logging.info(message)
-                    self.root.after(0,lambda: self.log_viewer(message))
+                    self.root.after(0,lambda: self.update_log_viewer(message))
                     return
                 
                 # Collect policy names and ARNs 
@@ -914,16 +923,16 @@ class IAMManagerApp:
                 logging.info('Policy listed successfully.')
 
                 # Update the GUI on main thread
-                self.root.after(0,lambda: self.log_viewer(policies_text))
+                self.root.after(0,lambda: self.update_log_viewer(policies_text))
             
             except ClientError as e:
                 error_message = f'ClientError listing policies: {e}'
                 logging.error(error_message)
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
             except Exception as e:
                 error_message = f'Unexpected error occurred: {e}'
                 logging.error(error_message)
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
         
         # Start the policy listing process in a new thread.
         threading.Thread(target=list_policies_thread,daemon=True).start()
@@ -954,25 +963,25 @@ class IAMManagerApp:
                 logging.info(log_message)
 
                 # Update the GUI  and modify the user on the main thread
-                self.roto.after(0,lambda: self.log_viewer(log_message))
-                self.root.after(0,lambda: self.log_viewer("Success",log_message))
+                self.roto.after(0,lambda: self.update_log_viewer(log_message))
+                self.root.after(0,lambda: self.update_log_viewer("Success",log_message))
             
             except self.iam.exceptions.NoSuchEntityException:
                 error_message = f'Policy {policy_arn} does not exist.'
                 logging.error(error_message)
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
                 self.root.after(0,lambda: messagebox.showerror("Error",error_message))
             
             except ClientError as e:
                 error_message = f'ClientError deleting policy {policy_arn}: {e}'
                 logging.error(error_message)
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
                 self.root.after(0,lambda: messagebox.showerror("Error",error_message))
             
             except Exception as e:
                 error_message = f'Unexpected error deleting policy {policy_arn}: {e}'
                 logging.error(error_message)
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
                 self.roto.after(0,lambda: messagebox.showerror("Error",error_message))
             
         # Run the deletion in a new thread to keep the GUI responsive.
@@ -1002,25 +1011,25 @@ class IAMManagerApp:
                 logging.info(log_message)
 
                 # Update the GUI on main thread and notify the user
-                self.root.after(0,lambda: self.log_viewer(log_message)) 
+                self.root.after(0,lambda: self.update_log_viewer(log_message)) 
                 self.root.after(0,lambda: messagebox.showinfo("Success",log_message))
 
             except self.iam.exceptions.EntityAlreadyExistsException:
                 error_message = f'Group "{group_name}" already exists.'
                 logging.error(error_message)
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
                 self.root.after(0,lambda: messagebox.showerror("Error",error_message))
             
             except ClientError as e:
                 error_message = f'ClientError creating group {group_name}: {e}'
                 logging.error(error_message)
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
                 self.root.after(0,lambda: messagebox.showerror("Error",error_message))
             
             except Exception as e:
                 error_message = f'Unexpected error creating group: {group_name}: {e}'
                 logging.error(error_message)
-                self.root.after(0,lambda: self.log_viewer(error_message))
+                self.root.after(0,lambda: self.update_log_viewer(error_message))
                 self.root.after(0,lambda: messagebox.showerror("Error",error_message))
             
         # Start a new thread for creating the group to keep the GUI responsive
@@ -1098,7 +1107,3 @@ class IAMManagerApp:
 
       # Start a new thread for deleting the group
       threading.Thread(target=run_deletion, daemon=True).start()
-
-
-
-
