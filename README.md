@@ -1,10 +1,10 @@
-# IAM Manager GUI
+# AWS IAM Management GUI
 
-![Build Status](https://img.shields.io/github/workflow/status/MaheshShukla1/IAM-Automation-GUI/CI)
-![License](https://img.shields.io/github/license/MaheshShukla1/IAM-Automation-GUI)
-![Version](https://img.shields.io/github/release/MaheshShukla1/IAM-Automation-GUI)
+![Build Status](https://img.shields.io/github/workflow/status/MaheshShukla1/AWS-IAM-Management-GUI/CI)
+![License](https://img.shields.io/github/license/MaheshShukla1/AWS-IAM-Management-GUI)
+![Version](https://img.shields.io/github/release/MaheshShukla1/AWS-IAM-Management-GUI)
 
-**IAM Manager GUI** is a user-friendly desktop application designed for efficient **AWS IAM Management**. This powerful tool simplifies **AWS Identity and Access Management** tasks by offering an intuitive graphical interface. **IAM Manager GUI** allows you to seamlessly manage **IAM Users**, **IAM Roles**, **IAM Policies**, and **IAM Groups** using Python’s `boto3` and `tkinter`.
+**AWS IAM Management GUI** is a cutting-edge desktop application crafted for streamlined **AWS IAM Management**. This sophisticated tool simplifies **AWS Identity and Access Management** tasks by providing an intuitive graphical user interface. Designed for efficiency, the **AWS IAM Management GUI** empowers users to effortlessly manage **IAM Users**, **IAM Roles**, **IAM Policies**, and **IAM Groups**. Built with Python’s robust `boto3` library and `tkinter` framework, it offers seamless integration with AWS services and enhances administrative capabilities with a user-friendly experience.
 
 ## Features
 
@@ -23,12 +23,10 @@
 ## Installation
 
 ### 1. Clone the Repository
-# ![git_clone](https://github.com/user-attachments/assets/6672bebb-6052-4dfe-8bcf-2d8c0ad6b67e)
-# ![cd](https://github.com/user-attachments/assets/764f0bb4-0f65-46ba-98bb-cf391fa2cd1c)
 
 ```bash
-git clone https://github.com/MaheshShukla1/IAM-Manager-GUI.git
-cd IAM-Manager-GUI
+git clone https://github.com/MaheshShukla1/AWS-IAM-Management-GUI.git
+cd AWS-IAM-Management-GUI
 ```
 
 ### 2. Install Dependencies
@@ -39,7 +37,7 @@ pip install boto3
 
 ### 3. Configure AWS Credentials
 Set up your AWS credentials using:
-# ![aws_configure](https://github.com/user-attachments/assets/a1646b82-8d49-40b9-9ca7-2f2ec96695c7)
+
 
 ```bash
 aws configure
@@ -53,14 +51,14 @@ aws configure
     ```
     
 2. **Navigate the GUI**
-
-- **Create User**: Click "Create User" and enter the username.
-- **List Users**: Click "List Users" to view all IAM users.
-- **Delete User**: Click "Delete User" and confirm.
-- **Create Role**: Enter role details and trust policy JSON.
-- **Attach/Detach Policy**: Manage role policies by entering role name and policy ARN.
-- **Manage Policies**: Create, list, and delete IAM policies.
-- **Manage Groups**: Create and delete IAM groups
+    
+    - **Create User**: Click "Create User" and enter the username.
+    - **List Users**: Click "List Users" to view all IAM users.
+    - **Delete User**: Click "Delete User" and confirm.
+    - **Create Role**: Enter role details and trust policy JSON.
+    - **Attach/Detach Policy**: Manage role policies by entering role name and policy ARN.
+    - **Manage Policies**: Create, list, and delete IAM policies.
+    - **Manage Groups**: Create and delete IAM groups
 
 ## Configuration
 
@@ -112,4 +110,4 @@ Use the command `aws configure` to update your AWS credentials.
 
 ## Support
 
-For issues, open a ticket on [GitHub Issues](https://github.com/MaheshShukla1/IAM-Manager-GUI/issues) or email Mahesh Shukla at MaheshCloudSec1@gmail.com.
+For issues, open a ticket on [GitHub Issues](https://github.com/MaheshShukla1/AWS-IAM-Management-GUI/issues) or email Mahesh Shukla at MaheshCloudSec1@gmail.com.
