@@ -47,13 +47,13 @@ class LogHandler(logging.Handler):
         try:
             msg = self.format(record)
             # Ensure self.root is a Tkinter root or Toplevel window
-            if hasattr(self.root,'log_viewer') and self.root.isEnabledFor(logging.ERROR):
+            if hasattr(self.root, 'log_viewer'):
                 self.root.after(0, self.update_log_viewer, msg)
-                logging.error(f'Error in LogHandler emit method: {msg}')
             else:
-                raise AttributeError("self.root does not have 'after' method.")
+                print("Error: 'log_viewer' attribute not found in root.")
         except Exception as e:
-            logging.error(f"Error in LogHandler emit method: {e}")
+            # Avoid logging errors here to prevent recursion
+            self.handle_exception(e)
 
     def update_log_viewer(self, message):
         try:
@@ -66,7 +66,10 @@ class LogHandler(logging.Handler):
             else:
                 print("Error: 'log_viewer' attribute not found in root.")
         except Exception as e:
-            # Use traceback to get a detailed error message
-            error_msg = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-            # Print to the console to avoid recursion
-            print(f'Error updating log viewer: {error_msg}')
+            # Handle errors in updating log viewer, avoiding recursion
+            self.handle_exception(e)
+
+    def handle_exception(self, exception):
+        # Print the error message to the console to avoid recursion
+        error_msg = ''.join(traceback.format_exception(type(exception), exception, exception.__traceback__))
+        print(f'Error handling log message: {error_msg}')
