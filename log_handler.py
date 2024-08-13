@@ -1,7 +1,6 @@
-import logging.handlers
 import logging
 import tkinter as tk
-
+import traceback
 # logging and logging.handlers are imported for handling and formatting log messages.
 
 """
@@ -38,25 +37,36 @@ Error Handling: If an error occurs during these operations, it will be logged.
 Summary
 This code sets up a custom logging handler for a Tkinter application. It formats log messages and displays them in a Tkinter Text widget. The key addition is ensuring that GUI updates occur in a thread-safe manner using app.after(). This ensures that logs are displayed correctly even when generated from different threads.
 """
-class LogHandler(logging.Handler):
-    def __init__(self,app):
-        super().__init__()
-        self.app = app
 
-        
-    def emit(self,record):
+class LogHandler(logging.Handler):
+    def __init__(self, root):
+        super().__init__()
+        self.root = root
+
+    def emit(self, record):
         try:
             msg = self.format(record)
-            self.app.after(0,self.update_log_viewer,msg)
+            # Ensure self.root is a Tkinter root or Toplevel window
+            if hasattr(self.root,'log_viewer') and self.root.isEnabledFor(logging.ERROR):
+                self.root.after(0, self.update_log_viewer, msg)
+                logging.error(f'Error in LogHandler emit method: {msg}')
+            else:
+                raise AttributeError("self.root does not have 'after' method.")
         except Exception as e:
-            logging.error(f'Error in LogHandler emit method: {e}')
-    
-    def update_log_viewer(self,message):
-        try:
-            self.app.log_viewer.configure(state='normal')
-            self.app.log_viewer.insert(tk.END,message+'\n')
-            self.app.log_viewer.configure(state='disabled')
-            self.app.log_viewer.yview(tk.END)
-        except Exception as e:
-            logging.error(f'Error updating log viewer: {e}')
+            logging.error(f"Error in LogHandler emit method: {e}")
 
+    def update_log_viewer(self, message):
+        try:
+            if hasattr(self.root, 'log_viewer'):
+                # Update the log_viewer widget
+                self.root.log_viewer.configure(state='normal')  # Allow editing
+                self.root.log_viewer.insert(tk.END, message + '\n')  # Insert the message
+                self.root.log_viewer.configure(state='disabled')  # Disable editing
+                self.root.log_viewer.yview(tk.END)  # Scroll to the end
+            else:
+                print("Error: 'log_viewer' attribute not found in root.")
+        except Exception as e:
+            # Use traceback to get a detailed error message
+            error_msg = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+            # Print to the console to avoid recursion
+            print(f'Error updating log viewer: {error_msg}')
