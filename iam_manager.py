@@ -270,18 +270,25 @@ class IAMManagerApp:
         threading.Thread(target=perform_policy_search,args=(policy_name,)).start()
 
     def create_user(self):
-    # Collect user input on the main thread
-     user_name = simpledialog.askstring("Create User", "Enter username:")
-     if not user_name:
-        return  # If the user cancels the input or doesn't provide a username, return immediately
+        # Collect user input on the main thread
+        user_name = simpledialog.askstring("Create User", "Enter username:")
+        if not user_name:
+            return  # If the user cancels the input or doesn't provide a username, return immediately
 
-     password = simpledialog.askstring("Create User", "Enter password (leave empty if no custom password):", show='*')
+        # Collect the password immediately after username input
+        self.root.after(0, lambda: self._prompt_for_password(user_name))
 
-    # Ensure user doesn't create an account if they press cancel on password dialog
-     if password is None:
-        return
+    def _prompt_for_password(self, user_name):
+        password = simpledialog.askstring("Create User", "Enter password (leave empty if no custom password):", show='*')
+        
+        # Ensure user doesn't create an account if they press cancel on password dialog
+        if password is None:
+            return
 
-     def task(user_name, password):
+        # Start a new thread for creating the user
+        threading.Thread(target=self._task, args=(user_name, password), daemon=True).start()
+
+    def _task(self, user_name, password):
         try:
             # Fetch the AWS Account ID using STS
             response = self.sts.get_caller_identity()
@@ -309,8 +316,6 @@ class IAMManagerApp:
             log_message = f'Error creating user {user_name}: {e}'
             self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
 
-    # Start a new thread for creating the user
-     threading.Thread(target=task, args=(user_name, password), daemon=True).start()
 
     def list_users(self):
         def task():
@@ -417,71 +422,84 @@ class IAMManagerApp:
             # Create and start a thread
             threading.Thread(target=user_deletion_task, daemon=True).start()
 
-
     def create_role(self):
-     def validate_trust_policy(trust_policy_obj):
-        statements = trust_policy_obj.get("Statement", [])
-        for statement in statements:
-            if "Principal" not in statement:
-                error_message = "Trust policy is missing 'Principal' field."
-                logging.error(error_message)
-                self.root.after(0, messagebox.showerror, "Error", error_message)
-                return False
-            if not isinstance(statement['Principal'], dict):
-                error_message = "'Principal' field must be an object."
-                logging.error(error_message)
-                self.root.after(0, messagebox.showerror, "Error", error_message)
-                return False
-        return True
+        def validate_trust_policy(trust_policy_obj):
+            statements = trust_policy_obj.get("Statement", [])
+            for statement in statements:
+                if "Principal" not in statement:
+                    error_message = "Trust policy is missing 'Principal' field."
+                    logging.error(error_message)
+                    messagebox.showerror("Error", error_message)
+                    return False
+                if not isinstance(statement['Principal'], dict):
+                    error_message = "'Principal' field must be an object."
+                    logging.error(error_message)
+                    messagebox.showerror("Error", error_message)
+                    return False
+            return True
 
+        def prompt_for_role_name():
+            role_name = simpledialog.askstring("Create Role", "Enter role name:")
+            return role_name
 
-     role_name = simpledialog.askstring("Create Role", "Enter role name:")
-     if not role_name:
-        return  # Exit if role name is not provided
+        def prompt_for_trust_policy():
+            trust_policy = simpledialog.askstring("Create Role", "Enter trust policy JSON:")
+            return trust_policy
 
-     trust_policy = simpledialog.askstring("Create Role", "Enter trust policy JSON:")
-     if not validate_json(trust_policy):
-        error_message = "Invalid JSON format for trust policy."
-        logging.error(error_message)
-        self.root.after(0, messagebox.showerror, "Error", error_message)
-        return
+        def validate_json(json_string):
+            try:
+                json_obj = json.loads(json_string)
+                return json_obj
+            except json.JSONDecodeError:
+                return None
 
-     try:
-        trust_policy_obj = json.loads(trust_policy)
+        # Get role name
+        role_name = prompt_for_role_name()
+        if not role_name:
+            return  # Exit if role name is not provided
+
+        # Get and validate trust policy
+        trust_policy = prompt_for_trust_policy()
+        if not trust_policy:
+            return  # Exit if trust policy is not provided
+
+        trust_policy_obj = validate_json(trust_policy)
+        if trust_policy_obj is None:
+            error_message = "Invalid JSON format for trust policy."
+            logging.error(error_message)
+            messagebox.showerror("Error", error_message)
+            return
+
         if not validate_trust_policy(trust_policy_obj):
             return
-     except json.JSONDecodeError:
-        error_message = "Error decoding trust policy JSON."
-        logging.error(error_message)
-        self.root.after(0, messagebox.showerror, "Error", error_message)
-        return
 
-     def role_creation_task():
-        try:
-            # Create role with the provided trust policy
-            self.iam.create_role(
-                RoleName=role_name,
-                AssumeRolePolicyDocument=trust_policy
-            )
-            success_message = f'Role {role_name} created successfully.'
-            logging.info(success_message)
-            self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
-        except self.iam.exceptions.EntityAlreadyExistsException:
-            error_message = f'Role {role_name} already exists.'
-            logging.error(error_message)
-            self.root.after(0, messagebox.showerror, "Error", error_message)
-        except ClientError as e:
-            error_message = f'ClientError creating role {role_name}: {e}'
-            logging.error(error_message)
-            self.root.after(0, messagebox.showerror, "Error", error_message)
-        except Exception as e:
-            error_message = f'Unexpected error creating role {role_name}: {e}'
-            logging.error(error_message)
-            self.root.after(0, messagebox.showerror, "Error", error_message)
+        def role_creation_task():
+            try:
+                # Create role with the provided trust policy
+                self.iam.create_role(
+                    RoleName=role_name,
+                    AssumeRolePolicyDocument=trust_policy
+                )
+                success_message = f'Role {role_name} created successfully.'
+                logging.info(success_message)
+                self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
+            except self.iam.exceptions.EntityAlreadyExistsException:
+                error_message = f'Role {role_name} already exists.'
+                logging.error(error_message)
+                self.root.after(0, lambda: messagebox.showerror("Error", error_message))
+            except ClientError as e:
+                error_message = f'ClientError creating role {role_name}: {e}'
+                logging.error(error_message)
+                self.root.after(0, lambda: messagebox.showerror("Error", error_message))
+            except Exception as e:
+                error_message = f'Unexpected error creating role {role_name}: {e}'
+                logging.error(error_message)
+                self.root.after(0, lambda: messagebox.showerror("Error", error_message))
 
-     # Create and start the thread
-     thread = threading.Thread(target=role_creation_task, daemon=True)
-     thread.start()
+        # Create and start the thread
+        thread = threading.Thread(target=role_creation_task, daemon=True)
+        thread.start()
+
 
 
     def delete_role(self):
