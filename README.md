@@ -6,13 +6,14 @@
 ## 🚀 Introduction Video
 
 Watch this video to see **AWS IAM Management GUI** in action and learn how to effectively use its features:
+![snippets](https://github.com/user-attachments/assets/9743c1cf-9a19-44cc-a9de-9a32e5dc5bd4)
 
 
 In this video, we demonstrate how to:
 
 - Create and manage IAM users
 - Assign and detach IAM roles
-- Handle IAM policies and groups
+- Handle IAM policies
 
 
 ## Prerequisites
