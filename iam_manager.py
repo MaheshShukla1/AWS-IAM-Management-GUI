@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import scrolledtext,ttk,messagebox,simpledialog
 import boto3
 import logging
+import re
+import asyncio
 from log_handler import LogHandler
 from validate_json import validate_json,json
 from botocore.exceptions import ClientError
@@ -270,51 +272,85 @@ class IAMManagerApp:
         threading.Thread(target=perform_policy_search,args=(policy_name,)).start()
 
     def create_user(self):
-        # Collect user input on the main thread
-        user_name = simpledialog.askstring("Create User", "Enter username:")
-        if not user_name:
-            return  # If the user cancels the input or doesn't provide a username, return immediately
+     # Collect user input on the main thread
+     user_name = simpledialog.askstring("Create User", "Enter username:")
+     if not user_name:
+        return  # If the user cancels the input or doesn't provide a username, return immediately
 
-        # Collect the password immediately after username input
-        self.root.after(0, lambda: self._prompt_for_password(user_name))
+     # Validate the username to ensure it meets AWS standards
+     if not self.validate_username(user_name):
+        messagebox.showerror("Invalid Username", "The username provided does not meet AWS naming standards.")
+        return
 
-    def _prompt_for_password(self, user_name):
-        password = simpledialog.askstring("Create User", "Enter password (leave empty if no custom password):", show='*')
-        
-        # Ensure user doesn't create an account if they press cancel on password dialog
-        if password is None:
-            return
+     # Collect the password immediately after username input
+     self.root.after(0, lambda: asyncio.run(self._prompt_for_password(user_name)))
 
-        # Start a new thread for creating the user
-        threading.Thread(target=self._task, args=(user_name, password), daemon=True).start()
+    async def _prompt_for_password(self, user_name):
+     password = simpledialog.askstring("Create User", "Enter password (leave empty if no custom password):", show='*')
 
-    def _task(self, user_name, password):
-        try:
-            # Fetch the AWS Account ID using STS
-            response = self.sts.get_caller_identity()
+     # Ensure the user doesn't create an account if they press cancel on password dialog
+     if password is None:
+        return
+
+     # Validate the password if provided
+     if password and not self.validate_password(password):
+        messagebox.showerror("Weak Password", "The password does not meet security standards.")
+        return
+
+     # Start a new async task for creating the user
+     asyncio.create_task(self._task(user_name, password))
+
+    async def _task(self, user_name, password):
+     try:
+        # Use a thread pool for blocking I/O operations
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            response = await loop.run_in_executor(pool, self.sts.get_caller_identity)
             account_id = response['Account']
-            
+
             # Create the user
-            self.iam.create_user(UserName=user_name)
-            
+            await loop.run_in_executor(pool, self.iam.create_user, {'UserName': user_name})
+
             # Set a custom password if provided
             if password:
-                self.iam.create_login_profile(UserName=user_name, Password=password, PasswordResetRequired=False)
-            
+                await loop.run_in_executor(pool, self.iam.create_login_profile, {'UserName': user_name, 'Password': password, 'PasswordResetRequired': False})
+
             user_console_link = f"https://{account_id}.signin.aws.amazon.com/console"
-            
+
             log_message = f'User {user_name} created successfully.\nUser Console Link: {user_console_link}'
             self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
 
-        except self.iam.exceptions.EntityAlreadyExistsException:
-            log_message = f'User {user_name} already exists.'
-            self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
-        except ClientError as e:
-            log_message = f'ClientError creating user {user_name}: {e}'
-            self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
-        except Exception as e:
-            log_message = f'Error creating user {user_name}: {e}'
-            self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
+     except self.iam.exceptions.EntityAlreadyExistsException:
+        log_message = f'User {user_name} already exists.'
+        self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
+     except ClientError as e:
+        log_message = f'ClientError creating user {user_name}: {e}'
+        self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
+     except Exception as e:
+        log_message = f'Error creating user {user_name}: {e}'
+        self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
+
+     def validate_username(self, username):
+      # AWS IAM username constraints: Usernames must be alphanumeric and/or the following symbols: =,.@-
+      if len(username) < 1 or len(username) > 64:
+        return False
+      if not re.match(r'^[a-zA-Z0-9+=,.@-]+$', username):
+        return False
+     return True
+
+    def validate_password(self, password):
+       # Example password policy: at least 8 characters, including one uppercase letter, one lowercase letter, one digit, and one special character
+     if len(password) < 8:
+        return False
+     if not re.search(r'[A-Z]', password):
+        return False
+     if not re.search(r'[a-z]', password):
+        return False
+     if not re.search(r'[0-9]', password):
+        return False
+     if not re.search(r'[@$!%*?&]', password):
+        return False
+     return True
 
 
     def list_users(self):
