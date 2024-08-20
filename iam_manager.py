@@ -330,13 +330,13 @@ class IAMManagerApp:
         log_message = f'Error creating user {user_name}: {e}'
         self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
 
-     def validate_username(self, username):
+    def validate_username(self, username):
       # AWS IAM username constraints: Usernames must be alphanumeric and/or the following symbols: =,.@-
       if len(username) < 1 or len(username) > 64:
         return False
       if not re.match(r'^[a-zA-Z0-9+=,.@-]+$', username):
         return False
-     return True
+      return True
 
     def validate_password(self, password):
        # Example password policy: at least 8 characters, including one uppercase letter, one lowercase letter, one digit, and one special character
