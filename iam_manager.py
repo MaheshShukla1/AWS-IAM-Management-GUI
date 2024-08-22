@@ -1,7 +1,8 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
-from tkinter import scrolledtext,ttk,messagebox,simpledialog
+from tkinter import ttk
+from tkinter import scrolledtext,ttk,messagebox,simpledialog,Toplevel,StringVar
 import boto3
 import logging
 import re
@@ -398,66 +399,97 @@ class IAMManagerApp:
 
 
     def delete_user(self):
-     user_name = simpledialog.askstring("Delete User", "Enter username:")
-     if user_name:
-        if messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete user {user_name}"):
+     def fetch_users():
+        try:
+            users = self.iam.list_users().get('Users', [])
+            return [user['UserName'] for user in users]
+        except ClientError as e:
+            logging.error(f"ClientError fetching users: {e}")
+            messagebox.showerror("Error", f"Error fetching users: {e}")
+            return []
 
-            def user_deletion_task():
-                try:
-                    # Delete login profile if exists
-                    try:
-                        self.iam.delete_login_profile(UserName=user_name)
-                        logging.info(f'Login profile for user {user_name} deleted successfully.')
-                    except self.iam.exceptions.NoSuchEntityException:
-                        logging.info(f'No login profile for user {user_name}. Skipping.')
+     def prompt_for_user_deletion():
+        # Create a Toplevel window for user selection
+        select_user_window = Toplevel(self.root)
+        select_user_window.title("Select User to Delete")
 
-                    # Delete Access keys
-                    access_keys = self.iam.list_access_keys(UserName=user_name).get('AccessKeyMetadata', [])
-                    for key in access_keys:
-                        self.iam.delete_access_key(UserName=user_name, AccessKeyId=key['AccessKeyId'])
-                        logging.info(f'Access key {key["AccessKeyId"]} for user {user_name} deleted successfully.')
+        # Fetch users and populate the combobox
+        users = fetch_users()
+        if not users:
+            messagebox.showerror("Error", "No users found or unable to fetch users.")
+            return  # Exit if no users found or error occurred
 
-                    # Delete inline policies
-                    inline_policies = self.iam.list_user_policies(UserName=user_name).get('PolicyNames', [])
-                    for policy_name in inline_policies:
-                        self.iam.delete_user_policy(UserName=user_name, PolicyName=policy_name)
-                        logging.info(f'Inline policy {policy_name} for user {user_name} deleted successfully.')
+        selected_user = StringVar()
 
-                    # Detach and delete attached policies
-                    attached_policies = self.iam.list_attached_user_policies(UserName=user_name).get('AttachedPolicies', [])
-                    for policy in attached_policies:
-                        self.iam.detach_user_policy(UserName=user_name, PolicyArn=policy['PolicyArn'])
-                        logging.info(f'Policy {policy["PolicyArn"]} detached from user {user_name} successfully.')
+        user_combobox = ttk.Combobox(select_user_window, textvariable=selected_user, values=users, state="readonly")
+        user_combobox.grid(row=0, column=0, padx=10, pady=10)
+        user_combobox.current(0)  # Set the default selection
 
-                    # Delete MFA Devices
-                    mfa_devices = self.iam.list_mfa_devices(UserName=user_name).get('MFADevices', [])
-                    for mfadevice in mfa_devices:
-                        self.iam.deactivate_mfa_device(UserName=user_name, SerialNumber=mfadevice['SerialNumber'])
-                        self.iam.delete_virtual_mfa_device(SerialNumber=mfadevice['SerialNumber'])
-                        logging.info(f'MFA Device {mfadevice["SerialNumber"]} for user {user_name} deleted successfully.')
+        def confirm_deletion():
+            user_name = selected_user.get()
+            if user_name:
+                if messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete user {user_name}?", parent=select_user_window):
+                    select_user_window.destroy()
+                    user_deletion_task(user_name)
 
-                    # Finally, delete the user
-                    self.iam.delete_user(UserName=user_name)
-                    logging.info(f'User {user_name} deleted successfully.')
+        delete_button = ttk.Button(select_user_window, text="Delete", command=confirm_deletion)
+        delete_button.grid(row=1, column=0, padx=10, pady=10)
 
-                    # Update GUI and show success message on the main thread
-                    message= f"User {user_name} deleted successfully."
-                    self.root.after(0, messagebox.showinfo, "Success", f"User {user_name} deleted successfully.")
-                    self.root.after(0, self.log_handler.update_log_viewer(message))
+     def user_deletion_task(user_name):
+        try:
+            # Delete login profile if exists
+            try:
+                self.iam.delete_login_profile(UserName=user_name)
+                logging.info(f'Login profile for user {user_name} deleted successfully.')
+            except self.iam.exceptions.NoSuchEntityException:
+                logging.info(f'No login profile for user {user_name}. Skipping.')
 
-                except self.iam.exceptions.NoSuchEntityException:
-                    logging.error(f'User {user_name} does not exist.')
-                    self.root.after(0, messagebox.showerror, "Error", f'User {user_name} does not exist.')
-                except ClientError as e:
-                    logging.error(f'ClientError deleting user {user_name}: {e}')
-                    self.root.after(0, messagebox.showerror, "Error", f'ClientError deleting user {user_name}: {e}')
-                except Exception as e:
-                    logging.error(f'Error deleting user {user_name}: {e}')
-                    self.root.after(0, messagebox.showerror, "Error", f'Error deleting user {user_name}: {e}')
+            # Delete Access keys
+            access_keys = self.iam.list_access_keys(UserName=user_name).get('AccessKeyMetadata', [])
+            for key in access_keys:
+                self.iam.delete_access_key(UserName=user_name, AccessKeyId=key['AccessKeyId'])
+                logging.info(f'Access key {key["AccessKeyId"]} for user {user_name} deleted successfully.')
 
-            # Create and start a thread
-            threading.Thread(target=user_deletion_task, daemon=True).start()
+            # Delete inline policies
+            inline_policies = self.iam.list_user_policies(UserName=user_name).get('PolicyNames', [])
+            for policy_name in inline_policies:
+                self.iam.delete_user_policy(UserName=user_name, PolicyName=policy_name)
+                logging.info(f'Inline policy {policy_name} for user {user_name} deleted successfully.')
 
+            # Detach and delete attached policies
+            attached_policies = self.iam.list_attached_user_policies(UserName=user_name).get('AttachedPolicies', [])
+            for policy in attached_policies:
+                self.iam.detach_user_policy(UserName=user_name, PolicyArn=policy['PolicyArn'])
+                logging.info(f'Policy {policy["PolicyArn"]} detached from user {user_name} successfully.')
+
+            # Delete MFA Devices
+            mfa_devices = self.iam.list_mfa_devices(UserName=user_name).get('MFADevices', [])
+            for mfadevice in mfa_devices:
+                self.iam.deactivate_mfa_device(UserName=user_name, SerialNumber=mfadevice['SerialNumber'])
+                self.iam.delete_virtual_mfa_device(SerialNumber=mfadevice['SerialNumber'])
+                logging.info(f'MFA Device {mfadevice["SerialNumber"]} for user {user_name} deleted successfully.')
+
+            # Finally, delete the user
+            self.iam.delete_user(UserName=user_name)
+            logging.info(f'User {user_name} deleted successfully.')
+
+            # Update GUI and show success message on the main thread
+            message = f"User {user_name} deleted successfully."
+            self.root.after(0, messagebox.showinfo, "Success", message)
+            self.root.after(0, self.log_handler.update_log_viewer, message)
+
+        except self.iam.exceptions.NoSuchEntityException:
+            logging.error(f'User {user_name} does not exist.')
+            self.root.after(0, messagebox.showerror, "Error", f'User {user_name} does not exist.')
+        except ClientError as e:
+            logging.error(f'ClientError deleting user {user_name}: {e}')
+            self.root.after(0, messagebox.showerror, "Error", f'ClientError deleting user {user_name}: {e}')
+        except Exception as e:
+            logging.error(f'Error deleting user {user_name}: {e}')
+            self.root.after(0, messagebox.showerror, "Error", f'Error deleting user {user_name}: {e}')
+
+     # Start the process by showing the user selection dialog
+     threading.Thread(target=prompt_for_user_deletion, daemon=True).start()
     def create_role(self):
         def prompt_for_role_name():
             # Focus on the main window before showing the dialog
@@ -551,65 +583,86 @@ class IAMManagerApp:
         thread.start()
 
     def delete_role(self):
-        role_name = simpledialog.askstring("Delete Role", "Enter role name:")
-        if not role_name:
-            return  # Exit if role name is not provided
+     def fetch_roles():
+        try:
+            roles = self.iam.list_roles().get('Roles', [])
+            return [role['RoleName'] for role in roles]
+        except ClientError as e:
+            logging.error(f"ClientError fetching roles: {e}")
+            messagebox.showerror("Error", f"Error fetching roles: {e}")
+            return []
 
-        if not messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete role {role_name}?"):
-            logging.info(f'Role deletion for {role_name} was canceled by the user.')
-            self.root.after(0, lambda: self.log_handler.update_log_viewer(f'Role deletion for {role_name} was canceled by the user.'))
-            return
+     def prompt_for_role_deletion():
+        # Create a Toplevel window for role selection
+        select_role_window = Toplevel(self.root)
+        select_role_window.title("Select Role to Delete")
 
-        def role_deletion_task():
-            try:
-                # Detach attached policies
-                attached_policies = self.iam.list_attached_role_policies(RoleName=role_name).get('AttachedPolicies', [])
-                if attached_policies:
-                    for policy in attached_policies:
-                        self.iam.detach_role_policy(RoleName=role_name, PolicyArn=policy['PolicyArn'])
-                        success_message = f'Policy {policy["PolicyArn"]} detached from role {role_name} successfully.'
-                        logging.info(success_message)
-                        self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
-                else:
-                    success_message = f'No attached policies found for role {role_name}.'
+        # Fetch roles and populate the combobox
+        roles = fetch_roles()
+        if not roles:
+            return  # Exit if no roles found or error occurred
+
+        selected_role = StringVar()  # Correctly use StringVar from tkinter
+
+        role_combobox = ttk.Combobox(select_role_window, textvariable=selected_role, values=roles, state="readonly")
+        role_combobox.grid(row=0, column=0, padx=10, pady=10)
+        role_combobox.current(0)  # Set the default selection
+
+        def confirm_deletion():
+            role_name = selected_role.get()
+            if role_name:
+                if messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete role {role_name}?", parent=select_role_window):
+                    select_role_window.destroy()
+                    role_deletion_task(role_name)
+
+        delete_button = ttk.Button(select_role_window, text="Delete", command=confirm_deletion)
+        delete_button.grid(row=1, column=0, padx=10, pady=10)
+
+     def role_deletion_task(role_name):
+        try:
+            # Detach attached policies
+            attached_policies = self.iam.list_attached_role_policies(RoleName=role_name).get('AttachedPolicies', [])
+            if attached_policies:
+                for policy in attached_policies:
+                    self.iam.detach_role_policy(RoleName=role_name, PolicyArn=policy['PolicyArn'])
+                    success_message = f'Policy {policy["PolicyArn"]} detached from role {role_name} successfully.'
                     logging.info(success_message)
                     self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
+            else:
+                logging.info(f'No attached policies found for role {role_name}.')
 
-                # Delete inline policies
-                inline_policies = self.iam.list_role_policies(RoleName=role_name).get('PolicyNames', [])
-                if inline_policies:
-                    for policy_name in inline_policies:
-                        self.iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
-                        success_message = f'Inline policy {policy_name} for role {role_name} deleted successfully.'
-                        logging.info(success_message)
-                        self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
-                else:
-                    success_message = f'No inline policies found for role {role_name}.'
+            # Delete inline policies
+            inline_policies = self.iam.list_role_policies(RoleName=role_name).get('PolicyNames', [])
+            if inline_policies:
+                for policy_name in inline_policies:
+                    self.iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
+                    success_message = f'Inline policy {policy_name} for role {role_name} deleted successfully.'
                     logging.info(success_message)
                     self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
+            else:
+                logging.info(f'No inline policies found for role {role_name}.')
 
-                # Finally, delete the role
-                self.iam.delete_role(RoleName=role_name)
-                success_message = f'Role {role_name} deleted successfully.'
-                logging.info(success_message)
-                self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
-                
-            except self.iam.exceptions.NoSuchEntityException:
-                error_message = f'Role {role_name} does not exist.'
-                logging.error(error_message)
-                self.root.after(0, lambda: self.log_handler.update_log_viewer(error_message))
-            except ClientError as e:
-                error_message = f'ClientError deleting role {role_name}: {e}'
-                logging.error(error_message)
-                self.root.after(0, lambda: self.log_handler.update_log_viewer(error_message))
-            except Exception as e:
-                error_message = f'Unexpected error deleting role {role_name}: {e}'
-                logging.error(error_message)
-                self.root.after(0, lambda: self.log_handler.update_log_viewer(error_message))
+            # Finally, delete the role
+            self.iam.delete_role(RoleName=role_name)
+            success_message = f'Role {role_name} deleted successfully.'
+            logging.info(success_message)
+            self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
 
-        # Create and start the thread
-        thread = threading.Thread(target=role_deletion_task, daemon=True)
-        thread.start()
+        except self.iam.exceptions.NoSuchEntityException:
+            error_message = f'Role {role_name} does not exist.'
+            logging.error(error_message)
+            self.root.after(0, lambda: self.log_handler.update_log_viewer(error_message))
+        except ClientError as e:
+            error_message = f'ClientError deleting role {role_name}: {e}'
+            logging.error(error_message)
+            self.root.after(0, lambda: self.log_handler.update_log_viewer(error_message))
+        except Exception as e:
+            error_message = f'Unexpected error deleting role {role_name}: {e}'
+            logging.error(error_message)
+            self.root.after(0, lambda: self.log_handler.update_log_viewer(error_message))
+
+     # Start the process by showing the role selection dialog
+     threading.Thread(target=prompt_for_role_deletion, daemon=True).start()
 
     def list_roles(self):
         """
