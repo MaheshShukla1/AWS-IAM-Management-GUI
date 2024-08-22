@@ -459,62 +459,76 @@ class IAMManagerApp:
             threading.Thread(target=user_deletion_task, daemon=True).start()
 
     def create_role(self):
-        def validate_trust_policy(trust_policy_obj):
-            statements = trust_policy_obj.get("Statement", [])
-            for statement in statements:
-                if "Principal" not in statement:
-                    error_message = "Trust policy is missing 'Principal' field."
-                    logging.error(error_message)
-                    messagebox.showerror("Error", error_message)
-                    return False
-                if not isinstance(statement['Principal'], dict):
-                    error_message = "'Principal' field must be an object."
-                    logging.error(error_message)
-                    messagebox.showerror("Error", error_message)
-                    return False
-            return True
-
         def prompt_for_role_name():
-            role_name = simpledialog.askstring("Create Role", "Enter role name:")
+            # Focus on the main window before showing the dialog
+            self.root.lift()  # Bring the window to the front
+            role_name = simpledialog.askstring("Create Role", "Enter role name:", parent=self.root)
+            self.root.focus_set()  # Set focus back to the main window
             return role_name
 
-        def prompt_for_trust_policy():
-            trust_policy = simpledialog.askstring("Create Role", "Enter trust policy JSON:")
-            return trust_policy
-
-        def validate_json(json_string):
-            try:
-                json_obj = json.loads(json_string)
-                return json_obj
-            except json.JSONDecodeError:
+        def prompt_for_account_choice():
+            # Focus on the main window before showing the dialog
+            self.root.lift()
+            options = ["This Account", "Another Account"]
+            account_choice = simpledialog.askstring("Trust Policy", "Choose account for trust policy (This Account / Another Account):", initialvalue="This Account", parent=self.root)
+            self.root.focus_set()
+            if account_choice not in options:
+                messagebox.showerror("Error", "Invalid choice. Please enter 'This Account' or 'Another Account'.", parent=self.root)
                 return None
+            return account_choice
+
+        def prompt_for_external_account_id():
+            # Focus on the main window before showing the dialog
+            self.root.lift()
+            account_id = simpledialog.askstring("External Account ID", "Enter the external AWS Account ID to trust:", parent=self.root)
+            self.root.focus_set()
+            return account_id
+
+        def generate_trust_policy(account_choice, external_account_id=None):
+            if account_choice == "This Account":
+                account_id = self.iam.get_caller_identity()['Account']
+            else:
+                account_id = external_account_id
+
+            trust_policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "AWS": f"arn:aws:iam::{account_id}:root"
+                        },
+                        "Action": "sts:AssumeRole"
+                    }
+                ]
+            }
+            return trust_policy
 
         # Get role name
         role_name = prompt_for_role_name()
         if not role_name:
             return  # Exit if role name is not provided
 
-        # Get and validate trust policy
-        trust_policy = prompt_for_trust_policy()
-        if not trust_policy:
-            return  # Exit if trust policy is not provided
+        # Get account choice for trust policy
+        account_choice = prompt_for_account_choice()
+        if not account_choice:
+            return  # Exit if account choice is not provided
 
-        trust_policy_obj = validate_json(trust_policy)
-        if trust_policy_obj is None:
-            error_message = "Invalid JSON format for trust policy."
-            logging.error(error_message)
-            messagebox.showerror("Error", error_message)
-            return
+        external_account_id = None
+        if account_choice == "Another Account":
+            external_account_id = prompt_for_external_account_id()
+            if not external_account_id:
+                return  # Exit if external account ID is not provided
 
-        if not validate_trust_policy(trust_policy_obj):
-            return
+        # Generate trust policy
+        trust_policy = generate_trust_policy(account_choice, external_account_id)
 
         def role_creation_task():
             try:
-                # Create role with the provided trust policy
+                # Create role with the generated trust policy
                 self.iam.create_role(
                     RoleName=role_name,
-                    AssumeRolePolicyDocument=trust_policy
+                    AssumeRolePolicyDocument=json.dumps(trust_policy)
                 )
                 success_message = f'Role {role_name} created successfully.'
                 logging.info(success_message)
@@ -522,21 +536,19 @@ class IAMManagerApp:
             except self.iam.exceptions.EntityAlreadyExistsException:
                 error_message = f'Role {role_name} already exists.'
                 logging.error(error_message)
-                self.root.after(0, lambda: messagebox.showerror("Error", error_message))
+                self.root.after(0, lambda: messagebox.showerror("Error", error_message, parent=self.root))
             except ClientError as e:
                 error_message = f'ClientError creating role {role_name}: {e}'
                 logging.error(error_message)
-                self.root.after(0, lambda: messagebox.showerror("Error", error_message))
+                self.root.after(0, lambda: messagebox.showerror("Error", error_message, parent=self.root))
             except Exception as e:
                 error_message = f'Unexpected error creating role {role_name}: {e}'
                 logging.error(error_message)
-                self.root.after(0, lambda: messagebox.showerror("Error", error_message))
+                self.root.after(0, lambda: messagebox.showerror("Error", error_message, parent=self.root))
 
         # Create and start the thread
         thread = threading.Thread(target=role_creation_task, daemon=True)
         thread.start()
-
-
 
     def delete_role(self):
         role_name = simpledialog.askstring("Delete Role", "Enter role name:")
