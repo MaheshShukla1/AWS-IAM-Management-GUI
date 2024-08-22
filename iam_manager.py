@@ -2,7 +2,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
 from tkinter import ttk
-from tkinter import scrolledtext,ttk,messagebox,simpledialog,Toplevel,StringVar
+from tkinter import scrolledtext,ttk,messagebox,simpledialog,Toplevel,StringVar,Radiobutton, Button
 import boto3
 import logging
 import re
@@ -490,97 +490,109 @@ class IAMManagerApp:
 
      # Start the process by showing the user selection dialog
      threading.Thread(target=prompt_for_user_deletion, daemon=True).start()
+
     def create_role(self):
-        def prompt_for_role_name():
-            # Focus on the main window before showing the dialog
-            self.root.lift()  # Bring the window to the front
-            role_name = simpledialog.askstring("Create Role", "Enter role name:", parent=self.root)
-            self.root.focus_set()  # Set focus back to the main window
-            return role_name
+     def prompt_for_role_name():
+        # Focus on the main window before showing the dialog
+        self.root.lift()  # Bring the window to the front
+        role_name = simpledialog.askstring("Create Role", "Enter role name:", parent=self.root)
+        self.root.focus_set()  # Set focus back to the main window
+        return role_name
 
-        def prompt_for_account_choice():
-            # Focus on the main window before showing the dialog
-            self.root.lift()
-            options = ["This Account", "Another Account"]
-            account_choice = simpledialog.askstring("Trust Policy", "Choose account for trust policy (This Account / Another Account):", initialvalue="This Account", parent=self.root)
-            self.root.focus_set()
-            if account_choice not in options:
-                messagebox.showerror("Error", "Invalid choice. Please enter 'This Account' or 'Another Account'.", parent=self.root)
-                return None
-            return account_choice
+     def prompt_for_account_choice():
+        # Create a Toplevel window for account choice
+        choice_window = Toplevel(self.root)
+        choice_window.title("Choose Account")
 
-        def prompt_for_external_account_id():
-            # Focus on the main window before showing the dialog
-            self.root.lift()
-            account_id = simpledialog.askstring("External Account ID", "Enter the external AWS Account ID to trust:", parent=self.root)
-            self.root.focus_set()
-            return account_id
+        # Variable to store the user's choice
+        account_choice = StringVar(value="This Account")
 
-        def generate_trust_policy(account_choice, external_account_id=None):
-            if account_choice == "This Account":
-                account_id = self.iam.get_caller_identity()['Account']
-            else:
-                account_id = external_account_id
+        # Create Radiobuttons for account choices
+        Radiobutton(choice_window, text="This Account", variable=account_choice, value="This Account").pack(anchor="w", padx=10, pady=5)
+        Radiobutton(choice_window, text="Another Account", variable=account_choice, value="Another Account").pack(anchor="w", padx=10, pady=5)
 
-            trust_policy = {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {
-                            "AWS": f"arn:aws:iam::{account_id}:root"
-                        },
-                        "Action": "sts:AssumeRole"
-                    }
-                ]
-            }
-            return trust_policy
+        def confirm_choice():
+            choice_window.destroy()
 
-        # Get role name
-        role_name = prompt_for_role_name()
-        if not role_name:
-            return  # Exit if role name is not provided
+        # Create Confirm button
+        Button(choice_window, text="Confirm", command=confirm_choice).pack(pady=10)
 
-        # Get account choice for trust policy
-        account_choice = prompt_for_account_choice()
-        if not account_choice:
-            return  # Exit if account choice is not provided
+        # Wait for the user to make a selection
+        choice_window.wait_window(choice_window)
+        return account_choice.get()
 
-        external_account_id = None
-        if account_choice == "Another Account":
-            external_account_id = prompt_for_external_account_id()
-            if not external_account_id:
-                return  # Exit if external account ID is not provided
+     def prompt_for_external_account_id():
+        # Focus on the main window before showing the dialog
+        self.root.lift()
+        account_id = simpledialog.askstring("External Account ID", "Enter the external AWS Account ID to trust:", parent=self.root)
+        self.root.focus_set()
+        return account_id
 
-        # Generate trust policy
-        trust_policy = generate_trust_policy(account_choice, external_account_id)
+     def generate_trust_policy(account_choice, external_account_id=None):
+        if account_choice == "This Account":
+            account_id = self.iam.get_caller_identity()['Account']
+        else:
+            account_id = external_account_id
 
-        def role_creation_task():
-            try:
-                # Create role with the generated trust policy
-                self.iam.create_role(
-                    RoleName=role_name,
-                    AssumeRolePolicyDocument=json.dumps(trust_policy)
-                )
-                success_message = f'Role {role_name} created successfully.'
-                logging.info(success_message)
-                self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
-            except self.iam.exceptions.EntityAlreadyExistsException:
-                error_message = f'Role {role_name} already exists.'
-                logging.error(error_message)
-                self.root.after(0, lambda: messagebox.showerror("Error", error_message, parent=self.root))
-            except ClientError as e:
-                error_message = f'ClientError creating role {role_name}: {e}'
-                logging.error(error_message)
-                self.root.after(0, lambda: messagebox.showerror("Error", error_message, parent=self.root))
-            except Exception as e:
-                error_message = f'Unexpected error creating role {role_name}: {e}'
-                logging.error(error_message)
-                self.root.after(0, lambda: messagebox.showerror("Error", error_message, parent=self.root))
+        trust_policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "AWS": f"arn:aws:iam::{account_id}:root"
+                    },
+                    "Action": "sts:AssumeRole"
+                }
+            ]
+        }
+        return trust_policy
 
-        # Create and start the thread
-        thread = threading.Thread(target=role_creation_task, daemon=True)
-        thread.start()
+     # Get role name
+     role_name = prompt_for_role_name()
+     if not role_name:
+        return  # Exit if role name is not provided
+ 
+     # Get account choice for trust policy
+     account_choice = prompt_for_account_choice()
+     if not account_choice:
+        return  # Exit if account choice is not provided
+
+     external_account_id = None
+     if account_choice == "Another Account":
+        external_account_id = prompt_for_external_account_id()
+        if not external_account_id:
+            return  # Exit if external account ID is not provided
+
+     # Generate trust policy
+     trust_policy = generate_trust_policy(account_choice, external_account_id)
+
+     def role_creation_task():
+        try:
+            # Create role with the generated trust policy
+            self.iam.create_role(
+                RoleName=role_name,
+                AssumeRolePolicyDocument=json.dumps(trust_policy)
+            )
+            success_message = f'Role {role_name} created successfully.'
+            logging.info(success_message)
+            self.root.after(0, lambda: self.log_handler.update_log_viewer(success_message))
+        except self.iam.exceptions.EntityAlreadyExistsException:
+            error_message = f'Role {role_name} already exists.'
+            logging.error(error_message)
+            self.root.after(0, lambda: messagebox.showerror("Error", error_message, parent=self.root))
+        except ClientError as e:
+            error_message = f'ClientError creating role {role_name}: {e}'
+            logging.error(error_message)
+            self.root.after(0, lambda: messagebox.showerror("Error", error_message, parent=self.root))
+        except Exception as e:
+            error_message = f'Unexpected error creating role {role_name}: {e}'
+            logging.error(error_message)
+            self.root.after(0, lambda: messagebox.showerror("Error", error_message, parent=self.root))
+
+     # Create and start the thread
+     thread = threading.Thread(target=role_creation_task, daemon=True)
+     thread.start()
 
     def delete_role(self):
      def fetch_roles():
