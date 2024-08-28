@@ -284,12 +284,9 @@ class IAMManagerApp:
         return
 
      # Collect the password immediately after username input
-     self.root.after(0, lambda: asyncio.run(self._prompt_for_password(user_name)))
-
-    async def _prompt_for_password(self, user_name):
      password = simpledialog.askstring("Create User", "Enter password (leave empty if no custom password):", show='*')
-
-     # Ensure the user doesn't create an account if they press cancel on password dialog
+    
+     # Ensure the user doesn't create an account if they press cancel on the password dialog
      if password is None:
         return
 
@@ -298,8 +295,8 @@ class IAMManagerApp:
         messagebox.showerror("Weak Password", "The password does not meet security standards.")
         return
 
-     # Start a new async task for creating the user
-     asyncio.create_task(self._task(user_name, password))
+     # Start the user creation task
+     asyncio.run(self._task(user_name, password))
 
     async def _task(self, user_name, password):
      try:
@@ -314,7 +311,11 @@ class IAMManagerApp:
 
             # Set a custom password if provided
             if password:
-                await loop.run_in_executor(pool, self.iam.create_login_profile, {'UserName': user_name, 'Password': password, 'PasswordResetRequired': False})
+                await loop.run_in_executor(pool, self.iam.create_login_profile, {
+                    'UserName': user_name, 
+                    'Password': password, 
+                    'PasswordResetRequired': False
+                })
 
             user_console_link = f"https://{account_id}.signin.aws.amazon.com/console"
 
@@ -332,15 +333,15 @@ class IAMManagerApp:
         self.root.after(0, lambda: self.log_handler.update_log_viewer(log_message))
 
     def validate_username(self, username):
-      # AWS IAM username constraints: Usernames must be alphanumeric and/or the following symbols: =,.@-
-      if len(username) < 1 or len(username) > 64:
+     # AWS IAM username constraints: Usernames must be alphanumeric and/or the following symbols: =,.@-
+     if len(username) < 1 or len(username) > 64:
         return False
-      if not re.match(r'^[a-zA-Z0-9+=,.@-]+$', username):
+     if not re.match(r'^[a-zA-Z0-9+=,.@-]+$', username):
         return False
-      return True
+     return True
 
     def validate_password(self, password):
-       # Example password policy: at least 8 characters, including one uppercase letter, one lowercase letter, one digit, and one special character
+     # Example password policy: at least 8 characters, including one uppercase letter, one lowercase letter, one digit, and one  special character
      if len(password) < 8:
         return False
      if not re.search(r'[A-Z]', password):
@@ -352,7 +353,6 @@ class IAMManagerApp:
      if not re.search(r'[@$!%*?&]', password):
         return False
      return True
-
 
     def list_users(self):
         def task():
