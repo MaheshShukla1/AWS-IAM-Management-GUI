@@ -273,7 +273,7 @@ class IAMManagerApp:
         threading.Thread(target=perform_policy_search,args=(policy_name,)).start()
 
     def create_user(self):
-        # Collect user input on the main thread
+        # Collect user input for username on the main thread
         user_name = simpledialog.askstring("Create User", "Enter username:")
         if not user_name:
             return  # If the user cancels the input or doesn't provide a username, return immediately
@@ -283,9 +283,16 @@ class IAMManagerApp:
             messagebox.showerror("Invalid Username", "The username provided does not meet AWS naming standards.")
             return
 
-        # Collect the password immediately after username input
+        # Prompt for password immediately after username input
+        self.prompt_for_password(user_name)
+
+    def prompt_for_password(self, user_name):
+        # Prompt for password immediately after username input
+        self.root.after(100, lambda: self._prompt_password(user_name))  # Use after to ensure smooth transition
+
+    def _prompt_password(self, user_name):
         password = simpledialog.askstring("Create User", "Enter password (leave empty if no custom password):", show='*')
-        
+
         # Ensure the user doesn't create an account if they press cancel on the password dialog
         if password is None:
             return
@@ -344,7 +351,7 @@ class IAMManagerApp:
         if len(password) < 8:
             return False
         if not re.search(r'[A-Z]', password):
-            return False 
+            return False
         if not re.search(r'[a-z]', password):
             return False
         if not re.search(r'[0-9]', password):
