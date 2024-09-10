@@ -8,8 +8,9 @@ from cryptography.fernet import Fernet
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QGridLayout, QLabel,
     QPushButton, QTextEdit, QWidget, QMessageBox, QInputDialog,
-    QHBoxLayout, QComboBox, QDialog, QFormLayout, QLineEdit
+    QHBoxLayout, QComboBox, QDialog, QFormLayout, QLineEdit,
 )
+from PyQt5.QtGui import QPalette, QColor
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from botocore.exceptions import ClientError
 
@@ -19,6 +20,7 @@ SECRET_KEY_FILE = 'secret.key'
 
 # Extended version with more error handling
 def generate_secret_key():
+    # Check if secret key exists before generating
     if not os.path.exists(SECRET_KEY_FILE):
         try:
             key = Fernet.generate_key()
@@ -124,8 +126,17 @@ class AddProfileDialog(QDialog):
         self.buttons_layout.addWidget(self.cancel_button)
         self.layout.addRow(self.buttons_layout)
 
-        self.add_button.clicked.connect(self.accept)
+        self.add_button.clicked.connect(self.validate_and_accept)  # Updated
         self.cancel_button.clicked.connect(self.reject)
+
+    def validate_and_accept(self):
+        """
+        Validates the input fields and accepts the dialog if all fields are valid.
+        """
+        if not all([self.profile_name_input.text(), self.access_key_input.text(), self.secret_key_input.text()]):
+            QMessageBox.warning(self, "Error", "All fields must be filled in.")
+            return
+        self.accept()
 
     def get_data(self):
         return {
@@ -134,7 +145,6 @@ class AddProfileDialog(QDialog):
             'SecretAccessKey': self.secret_key_input.text().strip(),
             'Region': self.region_input.text().strip() or 'us-east-1'  # Default region
         }
-
 class ProfilesManager:
     def __init__(self, profiles_file=PROFILES_FILE):
         self.profiles_file = profiles_file
@@ -362,28 +372,23 @@ class IAMManagerApp(QMainWindow):
 
 
     def load_profiles_into_combo(self):
+     """
+     Loads available profiles into the combo box and auto-selects the first profile.
+     """
      self.profile_combo.clear()
      profiles = self.profiles_manager.profiles
      if profiles:
         self.profile_combo.addItems(profiles.keys())
-        # Automatically select the first profile after loading
-        if profiles:
-            self.profile_combo.setCurrentIndex(0)  # Select the first profile
-            self.current_profile = self.profile_combo.currentText()  # Set current profile
-            logging.info(f"Profile {self.current_profile} loaded.")
-            self.update_aws_clients()  # Initialize AWS clients for the selected profile
-            if self.iam and self.sts:
-                logging.info(f"AWS clients initialized for profile {self.current_profile}.")
-            else:
-                logging.error(f"Failed to initialize AWS clients for profile {self.current_profile}.")
-        else:
-            self.log_handler.update_log_viewer("No profiles found.")
+        # Automatically select the first profile
+        if self.profile_combo.count() > 0:
+            self.profile_combo.setCurrentIndex(0)  # Automatically select the first profile
+            self.change_profile(self.profile_combo.currentText())  # Initialize AWS clients for the first profile
+            logging.info(f"Profile {self.current_profile} loaded and AWS clients initialized.")
      else:
         self.profile_combo.addItem("No Profiles Available")
         self.current_profile = None
         logging.warning("No profiles available to load.")
         self.log_handler.update_log_viewer("No profiles available.")
-
 
     def add_profile(self):
      dialog = AddProfileDialog(self)
@@ -434,17 +439,26 @@ class IAMManagerApp(QMainWindow):
 
     # Validation before performing any AWS operation
     def validate_profile(self):
+     """
+     Validates if the current profile and AWS clients are correctly initialized.
+     """
      if not self.current_profile:
         logging.error("No profile selected.")
         self.log_handler.update_log_viewer("No profile selected. Please select a profile first.")
         return False
-     if not self.iam:  # Ensures that the IAM client is initialized
+
+     if not self.iam or not self.sts:
         logging.error("AWS clients are not initialized.")
         self.log_handler.update_log_viewer("AWS clients are not initialized. Please select a profile first.")
         return False
+
      return True
 
+
     def change_profile(self, profile_name):
+     """
+     Handles switching between different AWS profiles and updating the AWS clients.
+     """
      if profile_name == "No Profiles Available":
         self.current_profile = None
         self.iam = None
@@ -453,14 +467,17 @@ class IAMManagerApp(QMainWindow):
         logging.warning("Attempted to switch to 'No Profiles Available'.")
         return
 
-     # Set the selected profile and update AWS clients
      self.current_profile = profile_name
      logging.info(f"Profile selected: {self.current_profile}")
-     self.update_aws_clients()
+     self.update_aws_clients()  # Initialize AWS clients based on the selected profile
      self.log_handler.update_log_viewer(f"Switched to profile: {self.current_profile}")
 
 
     def update_aws_clients(self):
+     """
+     Initializes the AWS clients (IAM, STS) for the selected profile with proper error handling.
+     """
+     # If no profile is selected, reset the AWS clients
      if not self.current_profile:
         logging.error("No profile selected in update_aws_clients.")
         self.iam = None
@@ -468,6 +485,7 @@ class IAMManagerApp(QMainWindow):
         self.log_handler.update_log_viewer("AWS clients are not initialized. Please select a profile.")
         return
 
+     # Get the profile data from the profiles manager
      profile = self.profiles_manager.profiles.get(self.current_profile)
      if not profile:
         logging.error(f"No profile data found for: {self.current_profile}")
@@ -476,24 +494,20 @@ class IAMManagerApp(QMainWindow):
         self.log_handler.update_log_viewer(f"Error: No profile data found for: {self.current_profile}")
         return
 
-     logging.info(f"Initializing AWS clients for profile: {self.current_profile}")
+     # Initialize AWS clients with decrypted credentials
      try:
-        # Decrypt credentials
-        access_key_id = fernet.decrypt(profile['AccessKeyId'].encode()).decode()
-        secret_access_key = fernet.decrypt(profile['SecretAccessKey'].encode()).decode()
-
+        # Assuming decryption of credentials is handled in the profiles_manager already
         session = boto3.Session(
-            aws_access_key_id=access_key_id,
-            aws_secret_access_key=secret_access_key,
+            aws_access_key_id=profile['AccessKeyId'],
+            aws_secret_access_key=profile['SecretAccessKey'],
             region_name=profile['Region']
         )
-        # Initialize AWS IAM and STS clients
         self.iam = session.client('iam')
         self.sts = session.client('sts')
 
-        # Ensure clients are initialized
+        # Confirm clients were successfully initialized
         if self.iam and self.sts:
-            logging.info(f"AWS clients successfully initialized for profile: {self.current_profile}")
+            logging.info(f"AWS clients initialized for profile: {self.current_profile}")
             self.log_handler.update_log_viewer(f"AWS clients initialized for profile: {self.current_profile}")
         else:
             logging.error(f"Failed to initialize AWS clients for profile: {self.current_profile}")
@@ -508,101 +522,157 @@ class IAMManagerApp(QMainWindow):
         self.sts = None
 
      except Exception as e:
-        logging.critical(f"Error initializing AWS clients for profile {self.current_profile}: {e}")
+        logging.critical(f"Unexpected error initializing AWS clients for profile {self.current_profile}: {e}")
         self.log_handler.update_log_viewer(f"Error initializing AWS clients: {e}")
         self.iam = None
         self.sts = None
-  
+
 
     def apply_theme(self, theme):
-        if theme == 'dark':
-            self.setStyleSheet("""
-                QWidget {
-                    background-color: #333333;
-                    color: #ffffff;
-                }
-                QPushButton {
-                    background-color: #555555;
-                    color: #ffffff;
-                    border: 1px solid #444444;
-                    padding: 5px;
-                    font-size: 14px;
-                }
-                QPushButton:hover {
-                    background-color: #666666;
-                }
-                QTextEdit {
-                    background-color: #444444;
-                    color: #ffffff;
-                    border: 1px solid #333333;
-                }
-                QLineEdit, QComboBox {
-                    background-color: #555555;
-                    color: #ffffff;
-                    border: 1px solid #444444;
-                }
-                QDialog {
-                    background-color: #333333;
-                    color: #ffffff;
-                }
-            """)
-            self.toggle_theme_button.setText("Switch to Light Mode")
-            self.current_theme = 'dark'
-        else:
-            self.setStyleSheet("""
-                QWidget {
-                    background-color: #f5f5f5;
-                    color: #000000;
-                }
-                QPushButton {
-                    background-color: #e0e0e0;
-                    border: 1px solid #c0c0c0;
-                    padding: 5px;
-                    font-size: 14px;
-                }
-                QPushButton:hover {
-                    background-color: #d0d0d0;
-                }
-                QTextEdit {
-                    background-color: #ffffff;
-                    color: #000000;
-                    border: 1px solid #c0c0c0;
-                }
-                QLineEdit, QComboBox {
-                    background-color: #ffffff;
-                    color: #000000;
-                    border: 1px solid #c0c0c0;
-                }
-                QDialog {
-                    background-color: #f5f5f5;
-                    color: #000000;
-                }
-            """)
-            self.toggle_theme_button.setText("Switch to Dark Mode")
-            self.current_theme = 'light'
+      """
+     Applies the specified theme to the GUI.
+     """
+      if theme == 'dark':
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2b2b2b;  /* Slightly darker background for the main window */
+                color: #f0f0f0;  /* Soft light color for text */
+            }
+            QPushButton {
+                background-color: #3b3b3b;  /* Darker gray buttons */
+                color: #ffffff;
+                border: 1px solid #505050;  /* Muted border */
+                border-radius: 8px;  /* Rounded corners for a modern look */
+                padding: 10px 15px;  /* Larger padding for more clickable buttons */
+                font-size: 14px;  /* Font size to make it more readable */
+            }
+            QPushButton:hover {
+                background-color: #505050;  /* Lighter shade on hover */
+            }
+            QPushButton:pressed {
+                background-color: #606060;  /* Even lighter when pressed */
+            }
+            QTextEdit, QLineEdit, QComboBox {
+                background-color: #3c3c3c;  /* Darker background for text and inputs */
+                color: #ffffff;
+                border: 1px solid #4c4c4c;  /* Slightly lighter borders */
+                padding: 8px;  /* Consistent padding for input fields */
+                border-radius: 6px;
+            }
+            QTextEdit {
+                background-color: #2e2e2e;  /* Darker background for text areas */
+                padding: 10px;
+            }
+            QComboBox::drop-down {
+                background-color: #3b3b3b;
+                border-left: 1px solid #505050;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #3b3b3b;
+                color: #ffffff;
+                border: 1px solid #505050;
+            }
+            QDialog {
+                background-color: #2b2b2b;
+                color: #f0f0f0;
+                border-radius: 10px;
+            }
+            QLabel {
+                font-weight: bold;  /* Bold labels for better hierarchy */
+                color: #e0e0e0;
+                font-size: 14px;  /* Slightly bigger for readability */
+            }
+        """)
+        self.toggle_theme_button.setText("Switch to Light Mode")
+        self.current_theme = 'dark'
+      else:
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f4f4f4;  /* Light background for the main window */
+                color: #2e2e2e;  /* Dark text for high contrast */
+            }
+            QPushButton {
+                background-color: #e6e6e6;  /* Light gray buttons */
+                color: #2e2e2e;
+                border: 1px solid #bdbdbd;  /* Muted border */
+                border-radius: 8px;  /* Rounded corners for consistency */
+                padding: 10px 15px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #d4d4d4;  /* Slightly darker on hover */
+            }
+            QPushButton:pressed {
+                background-color: #c4c4c4;
+            }
+            QTextEdit, QLineEdit, QComboBox {
+                background-color: #ffffff;
+                color: #2e2e2e;
+                border: 1px solid #d1d1d1;
+                padding: 8px;
+                border-radius: 6px;
+            }
+            QTextEdit {
+                background-color: #fafafa;
+                padding: 10px;
+            }
+            QComboBox::drop-down {
+                background-color: #e6e6e6;
+                border-left: 1px solid #bdbdbd;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #ffffff;
+                color: #2e2e2e;
+                border: 1px solid #bdbdbd;
+            }
+            QDialog {
+                background-color: #f4f4f4;
+                color: #2e2e2e;
+                border-radius: 10px;
+            }
+            QLabel {
+                font-weight: bold;
+                color: #2e2e2e;
+                font-size: 14px;
+            }
+        """)
+        self.toggle_theme_button.setText("Switch to Dark Mode")
+        self.current_theme = 'light'
 
     def toggle_theme(self):
-        if self.current_theme == 'light':
-            self.apply_theme('dark')
-        else:
-            self.apply_theme('light')
+     """
+     Toggles between dark and light mode for the GUI.
+     """
+     if self.current_theme == 'light':
+        self.current_theme = 'dark'
+        self.apply_theme(self.current_theme)
+        self.toggle_theme_button.setText("Switch to Light Mode")
+     else:
+        self.current_theme = 'light'
+        self.apply_theme(self.current_theme)
+        self.toggle_theme_button.setText("Switch to Dark Mode")
+
 
     def clear_logs(self):
         self.log_viewer.clear()
+   
     def perform_task(self, task_function):
      """
-    Utility function to stop any existing thread and start a new one.
-    This ensures that only one worker is running at a time.
-     """
+     Utility function to stop any existing thread and start a new one.
+     This ensures that only one worker is running at a time.
+    """
      # Stop any existing thread before starting a new one
      if hasattr(self, 'worker') and self.worker.isRunning():
+        logging.info("Stopping the previous task before starting a new one.")
         self.worker.terminate()  # Safely stop the previous worker if it's still running
 
      # Initialize a new worker for the task
+     logging.info("Starting a new background task.")
      self.worker = Worker(task_function)
      self.worker.result.connect(self.log_handler.update_log_viewer)
      self.worker.error.connect(self.log_handler.update_log_viewer)
      self.worker.start()
+
 
     def create_user(self):
      """
