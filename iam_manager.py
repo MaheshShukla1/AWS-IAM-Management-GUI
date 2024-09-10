@@ -569,53 +569,91 @@ class IAMManagerApp(QMainWindow):
             return f'Error listing users: {e}'
 
     def delete_user(self):
-        users = self._fetch_users()
-        if not users:
-            QMessageBox.critical(self, "Error", "No users found or unable to fetch users.")
-            return
+     # Ensure the IAM client is initialized
+     if not self.iam:
+        QMessageBox.critical(self, "Error", "AWS IAM client is not initialized. Please select a valid profile.")
+        return
 
-        user_name, ok = QInputDialog.getItem(self, "Delete User", "Select user to delete:", users, 0, False)
-        if not ok or not user_name:
-            return
+     # Fetch the list of users
+     users = self._fetch_users()
+     if not users:
+        QMessageBox.critical(self, "Error", "No users found or unable to fetch users.")
+        return
 
-        worker = Worker(self._task_delete_user, user_name)
-        worker.result.connect(self.log_handler.update_log_viewer)
-        worker.error.connect(self.log_handler.update_log_viewer)
-        worker.start()
+     # Prompt user to select a user for deletion
+     user_name, ok = QInputDialog.getItem(self, "Delete User", "Select user to delete:", users, 0, False)
+     if not ok or not user_name:
+        return
+
+     # Perform the delete operation using a worker thread
+     worker = Worker(self._task_delete_user, user_name)
+     worker.result.connect(self.log_handler.update_log_viewer)
+     worker.error.connect(self.log_handler.update_log_viewer)
+     worker.start()
 
     def _fetch_users(self):
-        try:
-            users = self.iam.list_users().get('Users', [])
-            return [user['UserName'] for user in users]
-        except ClientError as e:
-            logging.error(f"ClientError fetching users: {e}")
-            return []
+     try:
+        # Ensure IAM client is initialized
+        if not self.iam:
+            raise Exception("AWS IAM client is not initialized. Please select a valid profile.")
+        
+        # List users from IAM
+        users = self.iam.list_users().get('Users', [])
+        return [user['UserName'] for user in users]
+     except ClientError as e:
+        logging.error(f"ClientError fetching users: {e}")
+        self.log_handler.update_log_viewer(f"Error fetching users: {e}")
+        return []
+     except Exception as e:
+        logging.error(f"Error fetching users: {e}")
+        self.log_handler.update_log_viewer(f"Error fetching users: {e}")
+        return []
 
     def _task_delete_user(self, user_name):
+     try:
+        # Ensure IAM client is initialized
+        if not self.iam:
+            raise Exception("AWS IAM client is not initialized. Please select a valid profile.")
+        
+        # Delete login profile
         try:
             self.iam.delete_login_profile(UserName=user_name)
-            access_keys = self.iam.list_access_keys(UserName=user_name).get('AccessKeyMetadata', [])
-            for key in access_keys:
-                self.iam.delete_access_key(UserName=user_name, AccessKeyId=key['AccessKeyId'])
-            inline_policies = self.iam.list_user_policies(UserName=user_name).get('PolicyNames', [])
-            for policy_name in inline_policies:
-                self.iam.delete_user_policy(UserName=user_name, PolicyName=policy_name)
-            attached_policies = self.iam.list_attached_user_policies(UserName=user_name).get('AttachedPolicies', [])
-            for policy in attached_policies:
-                self.iam.detach_user_policy(UserName=user_name, PolicyArn=policy['PolicyArn'])
-            mfa_devices = self.iam.list_mfa_devices(UserName=user_name).get('MFADevices', [])
-            for mfadevice in mfa_devices:
-                self.iam.deactivate_mfa_device(UserName=user_name, SerialNumber=mfadevice['SerialNumber'])
-                self.iam.delete_virtual_mfa_device(SerialNumber=mfadevice['SerialNumber'])
-            self.iam.delete_user(UserName=user_name)
-            return f'User {user_name} deleted successfully.'
-
         except self.iam.exceptions.NoSuchEntityException:
-            return f'User {user_name} does not exist.'
-        except ClientError as e:
-            return f'ClientError deleting user {user_name}: {e}'
-        except Exception as e:
-            return f'Error deleting user {user_name}: {e}'
+            pass  # Continue even if the user doesn't have a login profile
+
+        # Delete access keys
+        access_keys = self.iam.list_access_keys(UserName=user_name).get('AccessKeyMetadata', [])
+        for key in access_keys:
+            self.iam.delete_access_key(UserName=user_name, AccessKeyId=key['AccessKeyId'])
+
+        # Delete inline policies
+        inline_policies = self.iam.list_user_policies(UserName=user_name).get('PolicyNames', [])
+        for policy_name in inline_policies:
+            self.iam.delete_user_policy(UserName=user_name, PolicyName=policy_name)
+
+        # Detach managed policies
+        attached_policies = self.iam.list_attached_user_policies(UserName=user_name).get('AttachedPolicies', [])
+        for policy in attached_policies:
+            self.iam.detach_user_policy(UserName=user_name, PolicyArn=policy['PolicyArn'])
+
+        # Deactivate and delete MFA devices
+        mfa_devices = self.iam.list_mfa_devices(UserName=user_name).get('MFADevices', [])
+        for mfadevice in mfa_devices:
+            self.iam.deactivate_mfa_device(UserName=user_name, SerialNumber=mfadevice['SerialNumber'])
+            self.iam.delete_virtual_mfa_device(SerialNumber=mfadevice['SerialNumber'])
+
+        # Finally, delete the user
+        self.iam.delete_user(UserName=user_name)
+        return f'User {user_name} deleted successfully.'
+
+     except self.iam.exceptions.NoSuchEntityException:
+        return f'User {user_name} does not exist.'
+     except ClientError as e:
+        logging.error(f"ClientError deleting user {user_name}: {e}")
+        return f'ClientError deleting user {user_name}: {e}'
+     except Exception as e:
+        logging.error(f"Error deleting user {user_name}: {e}")
+        return f'Error deleting user {user_name}: {e}'
 
     def create_role(self):
         role_name, ok = QInputDialog.getText(self, "Create Role", "Enter role name:")
