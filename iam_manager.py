@@ -676,7 +676,7 @@ class IAMManagerApp(QMainWindow):
 
     def create_user(self):
      """
-    Creates a new AWS IAM user with optional login profile.
+     Creates a new AWS IAM user with optional login profile.
      """
      if not self.validate_profile():
         return
@@ -705,12 +705,12 @@ class IAMManagerApp(QMainWindow):
         logging.error(f"Weak password provided for user {user_name}")
         return
 
-     # Call the global perform_task function
+     # Call the global perform_task function with arguments
      self.perform_task(self._task_create_user, user_name, password)
 
     def _task_create_user(self, user_name, password):
      """
-    Background task to create a user and an optional login profile.
+     Background task to create a user and an optional login profile.
      """
      try:
         logging.info(f"Starting user creation process for {user_name}.")
@@ -742,7 +742,6 @@ class IAMManagerApp(QMainWindow):
      except Exception as e:
         logging.critical(f"Unexpected error creating user {user_name}: {e}")
         return f'Error creating user {user_name}: {e}'
-
 
     ### Supporting Functions for Validation
     def validate_username(self, username):
