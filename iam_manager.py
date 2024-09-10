@@ -17,37 +17,52 @@ from botocore.exceptions import ClientError
 PROFILES_FILE = 'profiles.json'
 SECRET_KEY_FILE = 'secret.key'
 
-# Function to generate a new secret key if one does not exist
+# Extended version with more error handling
 def generate_secret_key():
     if not os.path.exists(SECRET_KEY_FILE):
-        key = Fernet.generate_key()
-        with open(SECRET_KEY_FILE, 'wb') as f:
-            f.write(key)
+        try:
+            key = Fernet.generate_key()
+            with open(SECRET_KEY_FILE, 'wb') as f:
+                f.write(key)
+            logging.info(f"New secret key generated and saved to {SECRET_KEY_FILE}.")
+        except Exception as e:
+            logging.error(f"Failed to generate secret key: {e}")
+    else:
+        logging.info(f"Secret key already exists at {SECRET_KEY_FILE}.")
 
-# Function to load the secret key securely
 def load_secret_key():
-    with open(SECRET_KEY_FILE, 'rb') as f:
-        key = f.read()
-        if len(key) != 44:  # Fernet key should be 32 bytes URL-safe base64-encoded, which is 44 characters.
-            raise ValueError("Invalid Fernet key: must be 32 bytes, URL-safe base64-encoded")
+    try:
+        with open(SECRET_KEY_FILE, 'rb') as f:
+            key = f.read()
+        if len(key) != 44:
+            raise ValueError("Invalid Fernet key: must be 32 bytes, URL-safe base64-encoded.")
         return key
+    except FileNotFoundError:
+        logging.error(f"Secret key file not found: {SECRET_KEY_FILE}.")
+        raise
+    except Exception as e:
+        logging.error(f"Failed to load secret key: {e}")
+        raise
 
-# Validate the strength of the AWS access key and secret key
+# Validate AWS Credentials with logging
 def validate_aws_credentials(access_key, secret_key):
     access_key_pattern = r'^AKIA[0-9A-Z]{16}$'
     secret_key_pattern = r'^[A-Za-z0-9/+=]{40}$'
+    
     if not re.match(access_key_pattern, access_key):
+        logging.error(f"Invalid AWS Access Key ID: {access_key}")
         raise ValueError("Invalid Access Key ID format.")
+    
     if not re.match(secret_key_pattern, secret_key):
+        logging.error(f"Invalid AWS Secret Access Key: {secret_key}")
         raise ValueError("Invalid Secret Access Key format.")
 
-# Initialize the key
+# Initialize Fernet
 generate_secret_key()
-# Load the key securely
 try:
     SECRET_KEY = load_secret_key()
 except ValueError as e:
-    logging.error(f"Error loading the key: {e}")
+    logging.error(f"Error loading secret key: {e}")
     sys.exit(1)
 
 fernet = Fernet(SECRET_KEY)
@@ -77,6 +92,10 @@ class Worker(QThread):
                 self.result.emit(result)
         except Exception as e:
             self.error.emit(str(e))
+
+    def stop(self):
+        self.quit()  # Quit the thread
+        self.wait()  # Wait for the thread to finish properly before destruction
 
 class AddProfileDialog(QDialog):
     def __init__(self, parent=None):
@@ -122,15 +141,18 @@ class ProfilesManager:
         self.profiles = self.load_profiles()
 
     def load_profiles(self):
-        if not os.path.exists(self.profiles_file):
-            return {}
-        try:
-            with open(self.profiles_file, 'r') as f:
-                encrypted_profiles = json.load(f)
-                return self.decrypt_profiles(encrypted_profiles)
-        except (json.JSONDecodeError, Exception) as e:
-            logging.error(f"Error loading profiles: {e}")
-            return {}
+     if not os.path.exists(self.profiles_file):
+        logging.warning(f"{self.profiles_file} does not exist. Returning empty profile list.")
+        return {}
+     try:
+        with open(self.profiles_file, 'r') as f:
+            encrypted_profiles = json.load(f)
+            decrypted_profiles = self.decrypt_profiles(encrypted_profiles)
+            logging.info(f"Loaded and decrypted profiles: {decrypted_profiles}")
+            return decrypted_profiles
+     except (json.JSONDecodeError, Exception) as e:
+        logging.error(f"Error loading profiles: {e}")
+        return {}
 
     def save_profiles(self):
         try:
@@ -172,14 +194,20 @@ class ProfilesManager:
         return encrypted_profiles
 
     def decrypt_profiles(self, encrypted_profiles):
-        decrypted_profiles = {}
-        for profile_name, creds in encrypted_profiles.items():
+     decrypted_profiles = {}
+     for profile_name, creds in encrypted_profiles.items():
+        try:
             decrypted_profiles[profile_name] = {
                 'AccessKeyId': fernet.decrypt(creds['AccessKeyId'].encode()).decode(),
                 'SecretAccessKey': fernet.decrypt(creds['SecretAccessKey'].encode()).decode(),
                 'Region': creds['Region']
             }
-        return decrypted_profiles
+        except Exception as e:
+            logging.error(f"Error decrypting profile {profile_name}: {e}")
+            raise e
+     logging.info(f"Decrypted profiles: {decrypted_profiles}")
+     return decrypted_profiles
+
 
 class IAMManagerApp(QMainWindow):
     def __init__(self):
@@ -212,7 +240,7 @@ class IAMManagerApp(QMainWindow):
         self.profile_label = QLabel("Select Profile:")
         self.profile_combo = QComboBox()
         self.load_profiles_into_combo()
-        self.profile_combo.currentTextChanged.connect(self.change_profile)
+        self.profile_combo.currentIndexChanged.connect(self.change_profile)  # Updated to currentIndexChanged
 
         # Add and Delete Profile Buttons
         self.add_profile_button = QPushButton("Add Profile")
@@ -230,7 +258,7 @@ class IAMManagerApp(QMainWindow):
         self.current_profile = None
         self.iam = None
         self.sts = None
-        
+
         # Now call the update_aws_clients after the log handler is initialized
         self.update_aws_clients()
 
@@ -265,7 +293,7 @@ class IAMManagerApp(QMainWindow):
         self.delete_role_button.clicked.connect(self.delete_role)
         self.grid_layout.addWidget(self.delete_role_button, 1, 2)
 
-    
+        # Policy and Group Buttons
         self.attach_role_policy_button = QPushButton("Attach Policy to Role")
         self.attach_role_policy_button.clicked.connect(self.attach_role_policy)
         self.grid_layout.addWidget(self.attach_role_policy_button, 2, 0)
@@ -294,29 +322,24 @@ class IAMManagerApp(QMainWindow):
         self.delete_group_button.clicked.connect(self.delete_group)
         self.grid_layout.addWidget(self.delete_group_button, 4, 0)
 
-        # New buttons for group and user policy attachment/detachment
-
-        # Attach Group Policy
+        # Group and User Policy Management
         self.attach_group_policy_button = QPushButton("Attach Group Policy")
         self.attach_group_policy_button.clicked.connect(self.attach_group_policy)
         self.grid_layout.addWidget(self.attach_group_policy_button, 4, 1)
 
-        # Detach Group Policy
         self.detach_group_policy_button = QPushButton("Detach Group Policy")
         self.detach_group_policy_button.clicked.connect(self.detach_group_policy)
         self.grid_layout.addWidget(self.detach_group_policy_button, 4, 2)
 
-        # Attach User Policy
         self.attach_user_policy_button = QPushButton("Attach User Policy")
         self.attach_user_policy_button.clicked.connect(self.attach_user_policy)
         self.grid_layout.addWidget(self.attach_user_policy_button, 5, 0)
 
-        # Detach User Policy
         self.detach_user_policy_button = QPushButton("Detach User Policy")
         self.detach_user_policy_button.clicked.connect(self.detach_user_policy)
         self.grid_layout.addWidget(self.detach_user_policy_button, 5, 1)
 
-        # Clear Logs button
+        # Clear Logs and Exit
         self.clear_logs_button = QPushButton("Clear Logs")
         self.clear_logs_button.clicked.connect(self.clear_logs)
         self.grid_layout.addWidget(self.clear_logs_button, 5, 2)
@@ -339,87 +362,157 @@ class IAMManagerApp(QMainWindow):
 
 
     def load_profiles_into_combo(self):
-        self.profile_combo.clear()
-        profiles = self.profiles_manager.profiles
+     self.profile_combo.clear()
+     profiles = self.profiles_manager.profiles
+     if profiles:
+        self.profile_combo.addItems(profiles.keys())
+        # Automatically select the first profile after loading
         if profiles:
-            self.profile_combo.addItems(profiles.keys())
-            self.current_profile = self.profile_combo.currentText()
+            self.profile_combo.setCurrentIndex(0)  # Select the first profile
+            self.current_profile = self.profile_combo.currentText()  # Set current profile
+            logging.info(f"Profile {self.current_profile} loaded.")
+            self.update_aws_clients()  # Initialize AWS clients for the selected profile
+            if self.iam and self.sts:
+                logging.info(f"AWS clients initialized for profile {self.current_profile}.")
+            else:
+                logging.error(f"Failed to initialize AWS clients for profile {self.current_profile}.")
         else:
-            self.profile_combo.addItem("No Profiles Available")
-            self.current_profile = None
+            self.log_handler.update_log_viewer("No profiles found.")
+     else:
+        self.profile_combo.addItem("No Profiles Available")
+        self.current_profile = None
+        logging.warning("No profiles available to load.")
+        self.log_handler.update_log_viewer("No profiles available.")
+
 
     def add_profile(self):
-        dialog = AddProfileDialog(self)
-        if dialog.exec_() == QDialog.Accepted:
-            profile_data = dialog.get_data()
-            try:
-                if not all([profile_data['ProfileName'], profile_data['AccessKeyId'], profile_data['SecretAccessKey']]):
-                    raise ValueError("All fields except Region are required.")
-                self.profiles_manager.add_profile(profile_data)
-                self.load_profiles_into_combo()
-                QMessageBox.information(self, "Success", "Profile added successfully.")
-            except ValueError as ve:
-                QMessageBox.warning(self, "Error", str(ve))
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to add profile: {e}")
+     dialog = AddProfileDialog(self)
+     if dialog.exec_() == QDialog.Accepted:
+        profile_data = dialog.get_data()
+        try:
+            if not all([profile_data['ProfileName'], profile_data['AccessKeyId'], profile_data['SecretAccessKey']]):
+                raise ValueError("All fields except Region are required.")
+            self.profiles_manager.add_profile(profile_data)
+            self.load_profiles_into_combo()
+            self.profile_combo.setCurrentText(profile_data['ProfileName'])  # Set the new profile as the selected one
+            self.update_aws_clients()  # Initialize the clients for the newly added profile
+            logging.info(f"Profile {profile_data['ProfileName']} added and selected successfully.")
+            QMessageBox.information(self, "Success", "Profile added successfully.")
+        except ValueError as ve:
+            logging.error(f"Error adding profile: {ve}")
+            QMessageBox.warning(self, "Error", str(ve))
+        except Exception as e:
+            logging.critical(f"Critical error adding profile: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to add profile: {e}")
 
+
+    # Enhanced function for deleting a profile
     def delete_profile(self):
-        if not self.current_profile:
-            QMessageBox.warning(self, "Error", "No profile selected to delete.")
-            return
-        confirm = QMessageBox.question(
-            self, "Confirm Delete",
-            f"Are you sure you want to delete the profile '{self.current_profile}'?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if confirm == QMessageBox.Yes:
-            try:
-                self.profiles_manager.delete_profile(self.current_profile)
-                self.load_profiles_into_combo()
-                self.update_aws_clients()
-                QMessageBox.information(self, "Success", "Profile deleted successfully.")
-            except ValueError as ve:
-                QMessageBox.warning(self, "Error", str(ve))
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to delete profile: {e}")
+     if not self.current_profile:
+        QMessageBox.warning(self, "Error", "No profile selected to delete.")
+        logging.error("No profile selected for deletion.")
+        return
+     confirm = QMessageBox.question(
+        self, "Confirm Delete",
+        f"Are you sure you want to delete the profile '{self.current_profile}'?",
+        QMessageBox.Yes | QMessageBox.No
+     )
+     if confirm == QMessageBox.Yes:
+        try:
+            profile_name = self.current_profile
+            self.profiles_manager.delete_profile(profile_name)
+            self.load_profiles_into_combo()
+            self.update_aws_clients()
+            logging.info(f"Profile {profile_name} deleted successfully.")
+            QMessageBox.information(self, "Success", f"Profile {profile_name} deleted successfully.")
+        except ValueError as ve:
+            logging.error(f"Error deleting profile: {ve}")
+            QMessageBox.warning(self, "Error", str(ve))
+        except Exception as e:
+            logging.critical(f"Critical error deleting profile: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to delete profile: {e}")
+
+    # Validation before performing any AWS operation
+    def validate_profile(self):
+     if not self.current_profile:
+        logging.error("No profile selected.")
+        self.log_handler.update_log_viewer("No profile selected. Please select a profile first.")
+        return False
+     if not self.iam:  # Ensures that the IAM client is initialized
+        logging.error("AWS clients are not initialized.")
+        self.log_handler.update_log_viewer("AWS clients are not initialized. Please select a profile first.")
+        return False
+     return True
 
     def change_profile(self, profile_name):
-        if profile_name == "No Profiles Available":
-            self.current_profile = None
-            self.iam = None
-            self.sts = None
-            self.log_handler.update_log_viewer("No AWS profile selected.")
-            return
-        self.current_profile = profile_name
-        self.update_aws_clients()
-        self.log_handler.update_log_viewer(f"Switched to profile: {self.current_profile}")
+     if profile_name == "No Profiles Available":
+        self.current_profile = None
+        self.iam = None
+        self.sts = None
+        self.log_handler.update_log_viewer("No AWS profile selected.")
+        logging.warning("Attempted to switch to 'No Profiles Available'.")
+        return
+
+     # Set the selected profile and update AWS clients
+     self.current_profile = profile_name
+     logging.info(f"Profile selected: {self.current_profile}")
+     self.update_aws_clients()
+     self.log_handler.update_log_viewer(f"Switched to profile: {self.current_profile}")
+
 
     def update_aws_clients(self):
-        if not self.current_profile:
-            self.iam = None
-            self.sts = None
-            self.log_handler.update_log_viewer("AWS clients are not initialized. Please select a profile.")
-            return
-        profile = self.profiles_manager.profiles[self.current_profile]
-        try:
-            session = boto3.Session(
-                aws_access_key_id=profile['AccessKeyId'],
-                aws_secret_access_key=profile['SecretAccessKey'],
-                region_name=profile['Region']
-            )
-            self.iam = session.client('iam')
-            self.sts = session.client('sts')
+     if not self.current_profile:
+        logging.error("No profile selected in update_aws_clients.")
+        self.iam = None
+        self.sts = None
+        self.log_handler.update_log_viewer("AWS clients are not initialized. Please select a profile.")
+        return
+
+     profile = self.profiles_manager.profiles.get(self.current_profile)
+     if not profile:
+        logging.error(f"No profile data found for: {self.current_profile}")
+        self.iam = None
+        self.sts = None
+        self.log_handler.update_log_viewer(f"Error: No profile data found for: {self.current_profile}")
+        return
+
+     logging.info(f"Initializing AWS clients for profile: {self.current_profile}")
+     try:
+        # Decrypt credentials
+        access_key_id = fernet.decrypt(profile['AccessKeyId'].encode()).decode()
+        secret_access_key = fernet.decrypt(profile['SecretAccessKey'].encode()).decode()
+
+        session = boto3.Session(
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            region_name=profile['Region']
+        )
+        # Initialize AWS IAM and STS clients
+        self.iam = session.client('iam')
+        self.sts = session.client('sts')
+
+        # Ensure clients are initialized
+        if self.iam and self.sts:
+            logging.info(f"AWS clients successfully initialized for profile: {self.current_profile}")
             self.log_handler.update_log_viewer(f"AWS clients initialized for profile: {self.current_profile}")
-        except ClientError as ce:
-            logging.error(f"AWS ClientError: {ce}")
-            self.log_handler.update_log_viewer(f"Failed to initialize AWS clients: {ce}")
+        else:
+            logging.error(f"Failed to initialize AWS clients for profile: {self.current_profile}")
+            self.log_handler.update_log_viewer(f"Failed to initialize AWS clients for profile: {self.current_profile}")
             self.iam = None
             self.sts = None
-        except Exception as e:
-            logging.error(f"Error initializing AWS clients: {e}")
-            self.log_handler.update_log_viewer(f"Error initializing AWS clients: {e}")
-            self.iam = None
-            self.sts = None
+
+     except ClientError as ce:
+        logging.error(f"AWS ClientError initializing clients for profile {self.current_profile}: {ce}")
+        self.log_handler.update_log_viewer(f"Failed to initialize AWS clients: {ce}")
+        self.iam = None
+        self.sts = None
+
+     except Exception as e:
+        logging.critical(f"Error initializing AWS clients for profile {self.current_profile}: {e}")
+        self.log_handler.update_log_viewer(f"Error initializing AWS clients: {e}")
+        self.iam = None
+        self.sts = None
+  
 
     def apply_theme(self, theme):
         if theme == 'dark':
@@ -496,77 +589,166 @@ class IAMManagerApp(QMainWindow):
 
     def clear_logs(self):
         self.log_viewer.clear()
+    def perform_task(self, task_function):
+     """
+    Utility function to stop any existing thread and start a new one.
+    This ensures that only one worker is running at a time.
+     """
+     # Stop any existing thread before starting a new one
+     if hasattr(self, 'worker') and self.worker.isRunning():
+        self.worker.terminate()  # Safely stop the previous worker if it's still running
+
+     # Initialize a new worker for the task
+     self.worker = Worker(task_function)
+     self.worker.result.connect(self.log_handler.update_log_viewer)
+     self.worker.error.connect(self.log_handler.update_log_viewer)
+     self.worker.start()
 
     def create_user(self):
-        user_name, ok = QInputDialog.getText(self, "Create User", "Enter username:")
-        if not ok or not user_name:
-            return
+     """
+    Creates a new AWS IAM user with optional login profile.
+     """
+     if not self.validate_profile():
+        return
 
-        if not self.validate_username(user_name):
-            QMessageBox.critical(self, "Invalid Username", "The username provided does not meet AWS naming standards.")
-            return
+     # Prompt for user name
+     user_name, ok = QInputDialog.getText(self, "Create User", "Enter username:")
+     if not ok or not user_name:
+        return
 
-        password, ok = QInputDialog.getText(self, "Create User", "Enter password (leave empty if no custom password):", QLineEdit.Password)
-        if not ok:
-            return
+     # Validate the username based on AWS IAM naming rules
+     if not self.validate_username(user_name):
+        QMessageBox.critical(self, "Invalid Username",
+                             "The username must be alphanumeric and can include _+=,.@-. Max length is 64 characters.")
+        logging.error(f"Invalid username: {user_name}")
+        return
 
-        if password and not self.validate_password(password):
-            QMessageBox.critical(self, "Weak Password", "The password does not meet security standards.")
-            return
+     # Prompt for password (optional)
+     password, ok = QInputDialog.getText(self, "Create User", "Enter password (leave empty for no custom password):", QLineEdit.Password)
+     if not ok:
+        return
 
-        worker = Worker(self._task_create_user, user_name, password)
-        worker.result.connect(self.log_handler.update_log_viewer)
-        worker.error.connect(self.log_handler.update_log_viewer)
-        worker.start()
+     # Validate password if provided
+     if password and not self.validate_password(password):
+        QMessageBox.critical(self, "Weak Password",
+                             "Password must be at least 8 characters long and include uppercase, lowercase, number, and special character.")
+        logging.error(f"Weak password provided for user {user_name}")
+        return
+
+     # Call the global perform_task function
+     self.perform_task(self._task_create_user, user_name, password)
 
     def _task_create_user(self, user_name, password):
-        try:
-            response = self.sts.get_caller_identity()
-            account_id = response['Account']
+     """
+    Background task to create a user and an optional login profile.
+     """
+     try:
+        logging.info(f"Starting user creation process for {user_name}.")
+        response = self.sts.get_caller_identity()
+        account_id = response['Account']
 
-            self.iam.create_user(UserName=user_name)
-            if password:
-                self.iam.create_login_profile(UserName=user_name, Password=password, PasswordResetRequired=False)
+        # Create the user
+        self.iam.create_user(UserName=user_name)
 
-            user_console_link = f"https://{account_id}.signin.aws.amazon.com/console"
-            return f'User {user_name} created successfully.\nUser Console Link: {user_console_link}'
+        # If a password is provided, create the login profile
+        if password:
+            self.iam.create_login_profile(UserName=user_name, Password=password, PasswordResetRequired=False)
+            logging.info(f"Login profile created for user {user_name}.")
 
-        except self.iam.exceptions.EntityAlreadyExistsException:
-            return f'User {user_name} already exists.'
-        except ClientError as e:
-            return f'ClientError creating user {user_name}: {e}'
-        except Exception as e:
-            return f'Error creating user {user_name}: {e}'
+        # Generate a user console login link
+        user_console_link = f"https://{account_id}.signin.aws.amazon.com/console"
+        logging.info(f"User {user_name} created successfully. Console link generated.")
+
+        return f'User {user_name} created successfully.\nUser Console Link: {user_console_link}'
+
+     except self.iam.exceptions.EntityAlreadyExistsException:
+        logging.warning(f"User {user_name} already exists.")
+        return f'User {user_name} already exists.'
+
+     except ClientError as e:
+        logging.error(f"ClientError creating user {user_name}: {e}")
+        return f'ClientError creating user {user_name}: {e}'
+
+     except Exception as e:
+        logging.critical(f"Unexpected error creating user {user_name}: {e}")
+        return f'Error creating user {user_name}: {e}'
+
+
+    ### Supporting Functions for Validation
+    def validate_username(self, username):
+     """
+    Validates the username according to AWS IAM naming rules:
+    - Must be a string of characters consisting of upper and lowercase alphanumeric characters with no spaces.
+    - Can also include the following characters: _+=,.@-
+    - Must not exceed 64 characters.
+     """
+     if len(username) > 64:
+         return False
+
+     username_pattern = r'^[a-zA-Z0-9_+=,.@-]+$'
+     return bool(re.match(username_pattern, username))
+
+    def validate_password(self, password):
+     """
+    Ensures the password meets a set of security standards.
+    You can customize these rules based on your requirements.
+    For example:
+    - At least 8 characters
+    - Contains uppercase, lowercase, number, and special character
+     """
+     if len(password) < 8:
+        return False
+
+     password_pattern = r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*()_+]).{8,}$'
+     return bool(re.match(password_pattern, password))
 
     def list_users(self):
-        worker = Worker(self._task_list_users)
-        worker.result.connect(self.log_handler.update_log_viewer)
-        worker.error.connect(self.log_handler.update_log_viewer)
-        worker.start()
+     """
+    Triggers a background task to list all AWS IAM users, and display them in the log viewer.
+     """
+     if not self.validate_profile():  # Ensure a profile is selected
+        return
+
+     # Use the global perform_task to manage threading
+     self.perform_task(self._task_list_users)
 
     def _task_list_users(self):
-        try:
-            response = self.iam.list_users()
-            users = response.get('Users', [])
-            if not users:
-                return "No users found."
+     """
+    Background task to list users and their attached policies.
+     """
+     try:
+        logging.info("Fetching list of IAM users.")
+        response = self.iam.list_users()
+        users = response.get('Users', [])
 
-            users_info = []
-            for user in users:
-                user_name = user['UserName']
-                policy_response = self.iam.list_attached_user_policies(UserName=user_name)
-                policies = policy_response.get('AttachedPolicies', [])
-                policy_arn = [policy['PolicyArn'] for policy in policies]
-                policies_text = ", ".join(policy_arn) if policy_arn else "No policies attached."
-                user_info = f'User: {user_name}\nPolicies: {policies_text}\n'
-                users_info.append(user_info)
+        if not users:
+            logging.info("No users found in the current AWS account.")
+            return "No users found."
 
-            return "\n".join(users_info)
+        users_info = []
+        for user in users:
+            user_name = user['UserName']
+            logging.info(f"Fetching policies for user: {user_name}")
 
-        except ClientError as e:
-            return f'ClientError listing users: {e}'
-        except Exception as e:
-            return f'Error listing users: {e}'
+            # Fetch attached policies for the user
+            policy_response = self.iam.list_attached_user_policies(UserName=user_name)
+            policies = policy_response.get('AttachedPolicies', [])
+            policy_arns = [policy['PolicyArn'] for policy in policies]
+            policies_text = ", ".join(policy_arns) if policy_arns else "No policies attached."
+
+            user_info = f'User: {user_name}\nPolicies: {policies_text}\n'
+            users_info.append(user_info)
+
+        logging.info(f"Successfully fetched {len(users)} users.")
+        return "\n".join(users_info)
+
+     except ClientError as e:
+        logging.error(f"ClientError while listing users: {e}")
+        return f'ClientError listing users: {e}'
+
+     except Exception as e:
+        logging.critical(f"Unexpected error listing users: {e}")
+        return f'Error listing users: {e}'
 
     def delete_user(self):
      # Ensure the IAM client is initialized
