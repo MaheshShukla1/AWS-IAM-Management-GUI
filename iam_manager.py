@@ -945,16 +945,70 @@ class IAMManagerApp(QMainWindow):
 
 
     def attach_group_policy(self):
-        group_name, ok = QInputDialog.getText(self, "Attach Group Policy", "Enter group name:")
-        if ok and group_name:
-            policy_arn, ok = QInputDialog.getText(self, "Attach Group Policy", "Enter policy ARN:")
-            if ok and policy_arn:
-                try:
-                    self.iam.attach_group_policy(GroupName=group_name, PolicyArn=policy_arn)
-                    self.log_handler.update_log_viewer(f"Policy {policy_arn} attached to group {group_name}.")
-                except ClientError as e:
-                    self.log_handler.update_log_viewer(f"Error attaching policy: {str(e)}")
-                    logging.error(f"Error attaching policy to group {group_name}: {e}")
+     # Get group name input
+     group_name, ok = QInputDialog.getText(self, "Attach Group Policy", "Enter group name:")
+     if not ok or not group_name:
+        self.log_handler.update_log_viewer("Group name input cancelled or empty.")
+        return
+
+     # Get policy ARN input
+     policy_arn, ok = QInputDialog.getText(self, "Attach Group Policy", "Enter policy ARN:")
+     if not ok or not policy_arn:
+        self.log_handler.update_log_viewer("Policy ARN input cancelled or empty.")
+        return
+
+     # Validate if the group exists before attaching the policy
+     try:
+        response = self.iam.get_group(GroupName=group_name)
+        if response.get("Group"):
+            self.log_handler.update_log_viewer(f"Group {group_name} found. Proceeding with attaching policy.")
+     except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchEntity':
+            self.log_handler.update_log_viewer(f"Group {group_name} does not exist.")
+            logging.error(f"Group {group_name} does not exist: {e}")
+        else:
+            self.log_handler.update_log_viewer(f"Error verifying group existence: {str(e)}")
+            logging.error(f"Error verifying group {group_name}: {e}")
+        return  # Stop further execution if group does not exist or an error occurred
+
+     # Validate if the policy exists
+     try:
+        response = self.iam.get_policy(PolicyArn=policy_arn)
+        if not response.get("Policy"):
+            self.log_handler.update_log_viewer(f"Policy {policy_arn} does not exist.")
+            logging.error(f"Policy {policy_arn} does not exist.")
+            return
+     except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchEntity':
+            self.log_handler.update_log_viewer(f"Policy {policy_arn} does not exist.")
+            logging.error(f"Policy {policy_arn} does not exist: {e}")
+        else:
+            self.log_handler.update_log_viewer(f"Error verifying policy existence: {str(e)}")
+            logging.error(f"Error verifying policy {policy_arn}: {e}")
+        return
+
+     # Try attaching the policy to the group
+     try:
+        self.iam.attach_group_policy(GroupName=group_name, PolicyArn=policy_arn)
+        self.log_handler.update_log_viewer(f"Policy {policy_arn} successfully attached to group {group_name}.")
+        logging.info(f"Policy {policy_arn} attached to group {group_name} successfully.")
+     except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchEntity':
+            self.log_handler.update_log_viewer(f"Policy {policy_arn} is already attached to group {group_name}.")
+            logging.error(f"Policy {policy_arn} is already attached to group {group_name}: {e}")
+        elif error_code == 'LimitExceeded':
+            self.log_handler.update_log_viewer("Policy attachment rate limit exceeded. Please try again later.")
+            logging.error("Rate limit exceeded while attaching policy.")
+        else:
+            self.log_handler.update_log_viewer(f"Error attaching policy to group {group_name}: {str(e)}")
+            logging.error(f"Error attaching policy to group {group_name}: {e}")
+     except Exception as e:
+        self.log_handler.update_log_viewer(f"Unexpected error occurred: {str(e)}")
+        logging.error(f"Unexpected error while attaching policy to group {group_name}: {e}")
+
 
     def detach_group_policy(self):
         group_name, ok = QInputDialog.getText(self, "Detach Group Policy", "Enter group name:")
