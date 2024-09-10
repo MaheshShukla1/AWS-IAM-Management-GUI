@@ -981,13 +981,49 @@ class IAMManagerApp(QMainWindow):
                     logging.error(f"Error attaching policy to user {user_name}: {e}")
 
     def detach_user_policy(self):
-        user_name, ok = QInputDialog.getText(self, "Detach User Policy", "Enter user name:")
-        if ok and user_name:
-            policy_arn, ok = QInputDialog.getText(self, "Detach User Policy", "Enter policy ARN:")
-            if ok and policy_arn:
-                try:
-                    self.iam.detach_user_policy(UserName=user_name, PolicyArn=policy_arn)
-                    self.log_handler.update_log_viewer(f"Policy {policy_arn} detached from user {user_name}.")
-                except ClientError as e:
-                    self.log_handler.update_log_viewer(f"Error detaching policy: {str(e)}")
-                    logging.error(f"Error detaching policy from user {user_name}: {e}")
+     # Get user name input
+     user_name, ok = QInputDialog.getText(self, "Detach User Policy", "Enter user name:")
+     if not ok or not user_name:
+        self.log_handler.update_log_viewer("User name input cancelled or empty.")
+        return
+
+     # Get policy ARN input
+     policy_arn, ok = QInputDialog.getText(self, "Detach User Policy", "Enter policy ARN:")
+     if not ok or not policy_arn:
+        self.log_handler.update_log_viewer("Policy ARN input cancelled or empty.")
+        return
+
+     # Validate if the user exists before detaching policy
+     try:
+        response = self.iam.get_user(UserName=user_name)
+        if response.get("User"):
+            self.log_handler.update_log_viewer(f"User {user_name} found. Proceeding with detaching policy.")
+     except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchEntity':
+            self.log_handler.update_log_viewer(f"User {user_name} does not exist.")
+            logging.error(f"User {user_name} does not exist: {e}")
+        else:
+            self.log_handler.update_log_viewer(f"Error verifying user existence: {str(e)}")
+            logging.error(f"Error verifying user {user_name}: {e}")
+        return  # Stop further execution if user does not exist or error occurred
+
+     # Try detaching the policy from the user
+     try:
+        self.iam.detach_user_policy(UserName=user_name, PolicyArn=policy_arn)
+        self.log_handler.update_log_viewer(f"Policy {policy_arn} successfully detached from user {user_name}.")
+        logging.info(f"Policy {policy_arn} detached from user {user_name} successfully.")
+     except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchEntity':
+            self.log_handler.update_log_viewer(f"Policy {policy_arn} is not attached to user {user_name}.")
+            logging.error(f"Policy {policy_arn} is not attached to user {user_name}: {e}")
+        elif error_code == 'LimitExceeded':
+            self.log_handler.update_log_viewer("Policy detachment rate limit exceeded. Please try again later.")
+            logging.error("Rate limit exceeded while detaching policy.")
+        else:
+            self.log_handler.update_log_viewer(f"Error detaching policy from user {user_name}: {str(e)}")
+            logging.error(f"Error detaching policy from user {user_name}: {e}")
+     except Exception as e:
+        self.log_handler.update_log_viewer(f"Unexpected error occurred: {str(e)}")
+        logging.error(f"Unexpected error while detaching policy from user {user_name}: {e}")
