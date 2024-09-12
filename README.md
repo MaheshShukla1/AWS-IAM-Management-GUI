@@ -126,7 +126,7 @@ Special thanks to the developers and contributors of:
 - [boto3](https://github.com/boto/boto3) - AWS SDK for Python, enabling seamless interaction with AWS services.
 - [tkinter](https://docs.python.org/3/library/tkinter.html) - Python’s standard GUI toolkit, providing the foundation for the user interface.
 
-## ❓ Frequently Asked Questions (FAQ)
+## ❓ Frequently Asked Questions (FAQ)!
 
 **Q: How do I update my AWS credentials?**  
 A: Use the `aws configure` command to update your AWS credentials.
