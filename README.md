@@ -22,7 +22,6 @@ In today’s cloud-driven environment, effective management of AWS IAM is crucia
 
 _Explore the AWS IAM Management GUI through the following screenshots:_
 
-![snippets](https://github.com/user-attachments/assets/9743c1cf-9a19-44cc-a9de-9a32e5dc5bd4) 
 ### **Manage IAM users with ease.**
 
 ## 🎥 Video Tutorial
