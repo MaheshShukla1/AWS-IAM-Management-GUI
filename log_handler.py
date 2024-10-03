@@ -1,4 +1,5 @@
 import logging
+import logging.handlers
 import tkinter as tk
 import traceback
 # logging and logging.handlers are imported for handling and formatting log messages.
