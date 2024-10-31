@@ -7,7 +7,6 @@
 
 ## 🌟 Features
 
-
 - **Comprehensive IAM Management**: Create, list, delete, and manage IAM users, roles, policies, and groups effortlessly.
 - **User-Friendly Interface**: Navigate complex IAM tasks with an intuitive GUI, reducing the learning curve for cloud security professionals.
 - **Seamless AWS Integration**: Leverages `boto3` for direct and efficient interaction with AWS services, ensuring real-time updates and management.
