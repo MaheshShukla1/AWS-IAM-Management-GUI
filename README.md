@@ -5,7 +5,7 @@
 ## Introduction
 **AWS IAM Management GUI** is an advanced desktop application specifically designed to streamline **AWS Identity and Access Management (IAM)** operations. This intuitive tool simplifies the management of **IAM Users**, **IAM Roles**, **IAM Policies**, and **IAM Groups**, all through a sleek and user-friendly graphical interface. Built on the robust foundation of Python’s `boto3` library and `tkinter` framework, this application integrates seamlessly with AWS services, empowering cloud administrators to manage AWS IAM with unparalleled efficiency.
 
-## 🌟 Features
+## 🌟 Features 
 
 - **Comprehensive IAM Management**: Create, list, delete, and manage IAM users, roles, policies, and groups effortlessly.
 - **User-Friendly Interface**: Navigate complex IAM tasks with an intuitive GUI, reducing the learning curve for cloud security professionals.
