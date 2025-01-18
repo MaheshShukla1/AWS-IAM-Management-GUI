@@ -22,12 +22,10 @@ _Explore the AWS IAM Management GUI through the following screenshots:_
 ### **Manage IAM users with ease.**
 
 ## 🎥 Video Tutorial
-
 _A comprehensive video tutorial is coming soon!_  
 In the meantime, you can explore the screenshots provided above for a visual guide to using the AWS IAM Management GUI.
 
 ## ⚙️ Prerequisites
-
 - **Python 3.x**: Ensure Python 3.x is installed. `tkinter` is included by default in Python.
 - **AWS Credentials**: Set up your AWS credentials using the AWS CLI or environment variables.
 
