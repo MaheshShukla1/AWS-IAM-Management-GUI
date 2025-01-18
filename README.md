@@ -54,7 +54,6 @@ Set up your AWS credentials:
 aws configure
 ```
 ## 🚀 Getting Started
-
 To start using the AWS IAM Management GUI:
 
 1. **Run the Application**  
