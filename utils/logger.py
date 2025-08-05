@@ -40,37 +40,48 @@ This code sets up a custom logging handler for a Tkinter application. It formats
 """
 
 class LogHandler(logging.Handler):
-    def __init__(self, root):
+    """
+    Custom log handler to display log messages in a Tkinter Text widget (log_viewer).
+    Ensures GUI updates happen in the main thread using root.after().
+    """
+
+    def __init__(self, app):
         super().__init__()
-        self.root = root
+        self.app = app
+        self.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
     def emit(self, record):
         try:
             msg = self.format(record)
-            # Ensure self.root is a Tkinter root or Toplevel window
-            if hasattr(self.root, 'log_viewer'):
-                self.root.after(0, self.update_log_viewer, msg)
+            if hasattr(self.app, 'log_viewer'):
+                self.app.after(0, self.update_log_viewer, msg)
             else:
-                print("Error: 'log_viewer' attribute not found in root.")
+                print("Error: 'log_viewer' not found in app.")
         except Exception as e:
-            # Avoid logging errors here to prevent recursion
             self.handle_exception(e)
 
     def update_log_viewer(self, message):
         try:
-            if hasattr(self.root, 'log_viewer'):
-                # Update the log_viewer widget
-                self.root.log_viewer.configure(state='normal')  # Allow editing
-                self.root.log_viewer.insert(tk.END, message + '\n')  # Insert the message
-                self.root.log_viewer.configure(state='disabled')  # Disable editing
-                self.root.log_viewer.yview(tk.END)  # Scroll to the end
+            if hasattr(self.app, 'log_viewer'):
+                self.app.log_viewer.configure(state='normal')
+                self.app.log_viewer.insert(tk.END, message + '\n')
+                self.app.log_viewer.configure(state='disabled')
+                self.app.log_viewer.yview(tk.END)
             else:
-                print("Error: 'log_viewer' attribute not found in root.")
+                print("Error: 'log_viewer' not found in app.")
         except Exception as e:
-            # Handle errors in updating log viewer, avoiding recursion
             self.handle_exception(e)
 
     def handle_exception(self, exception):
-        # Print the error message to the console to avoid recursion
         error_msg = ''.join(traceback.format_exception(type(exception), exception, exception.__traceback__))
-        print(f'Error handling log message: {error_msg}')
+        print(f'[LogHandler Error] {error_msg}')
+
+
+class LogHandler:
+    def __init__(self, text_edit):
+        self.text_edit = text_edit
+
+    def update_log_viewer(self, message):
+        self.text_edit.append(message)
+        self.text_edit.ensureCursorVisible()
+        

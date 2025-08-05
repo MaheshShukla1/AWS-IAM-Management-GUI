@@ -1,6 +1,6 @@
 import sys
 from PyQt5.QtWidgets import QApplication
-from iam_manager import IAMManagerApp
+from gui.layout import IAMManagerApp
 
 def main():
     # Create a QApplication instance (PyQt5 application object)
